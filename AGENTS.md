@@ -27,7 +27,16 @@ Keep downloaded NNUE files out of commits.
 
 ## Testing Guidelines
 - Run the SwiftChessDemo UI tests after changing setup-screen, game-screen,
-  in-game piece-set selection, or in-game board-theme selection behavior.
+  in-game piece-set selection, in-game board-theme selection, player-side
+  setup, or move-flow behavior.
+- The move-flow UI tests cover four full moves from both white and black
+  perspectives. They launch with `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1`
+  so engine-side moves are deterministic and not coupled to Stockfish startup
+  time or best-move changes.
+- `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` and
+  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` are UI-test launch
+  environment flags used to keep simulator runs fast. Normal app launches
+  should not set these flags and should continue to exercise Stockfish.
 - If you change shared chess logic/UI, run `swift test` from `../SwiftChessTools`.
 - If you change engine integration, build `../StockfishEmbedded` smoke targets.
 

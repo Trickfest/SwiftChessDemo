@@ -29,11 +29,26 @@ struct GameView: View {
                     viewModel.handleUserMove(move: move, isLegal: isLegal)
                 }
                 .aspectRatio(1, contentMode: .fit)
-                .accessibilityIdentifier("Game.board")
-                .accessibilityValue("Pieces: \(viewModel.pieceSet.displayName), Board: \(viewModel.boardTheme.displayName)")
+                .overlay(alignment: .topLeading) {
+                    // Separate state marker keeps board assertions independent
+                    // from visual board rendering.
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Game board")
+                        .accessibilityIdentifier("Game.boardState")
+                        .accessibilityValue(
+                            "Pieces: \(viewModel.pieceSet.displayName), Board: \(viewModel.boardTheme.displayName), FEN: \(viewModel.positionFEN)"
+                        )
+                        .allowsHitTesting(false)
+                }
                 .padding()
 
             displayControls
+
+            if viewModel.showsUITestMoveControls {
+                uiTestMoveControls
+            }
 
             // Simple resign button to demonstrate game-ending flow.
             Button("Resign") {
@@ -120,6 +135,30 @@ struct GameView: View {
         }
         .buttonStyle(.bordered)
         .padding(.horizontal)
+    }
+
+    private var uiTestMoveControls: some View {
+        VStack(spacing: 6) {
+            Text(viewModel.positionFEN)
+                .font(.caption2.monospaced())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("UITest.positionFEN")
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d3", "f8c5"], id: \.self) { move in
+                        Button(move) {
+                            viewModel.performUITestMove(move)
+                        }
+                        .accessibilityIdentifier("UITest.move.\(move)")
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .frame(height: 64)
     }
 
     private func displayControlLabel(title: String, value: String, systemImage: String) -> some View {

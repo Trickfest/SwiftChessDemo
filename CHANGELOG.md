@@ -17,6 +17,9 @@ for a release.
   selectable during a game.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI board theme is
   selectable during a game.
+- Added SwiftChessDemo UI tests that exercise four full moves from both white
+  and black perspectives, using a test-only scripted engine path for
+  deterministic opponent replies.
 
 ### Changed
 

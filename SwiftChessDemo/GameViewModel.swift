@@ -46,6 +46,8 @@ final class GameViewModel: ObservableObject {
             boardModel.boardTheme = boardTheme
         }
     }
+    /// Current FEN exposed to UI tests for black-box board-change assertions.
+    @Published private(set) var positionFEN: String
 
     /// The human player's color; used to gate whose turn it is.
     let playerColor: PieceColor
@@ -71,19 +73,22 @@ final class GameViewModel: ObservableObject {
     /// Quick flag to prevent parallel searches.
     private var isEngineThinking = false
     /// Cosmetic delay before asking Stockfish for a reply, so the demo feels like the engine is thinking.
-    private let engineReplyDelaySeconds: TimeInterval = 2.5
+    private let engineReplyDelaySeconds: TimeInterval
 
     init(playerColor: PieceColor, engineDepth: Int, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
         // Store the Stockfish depth so search limits stay consistent.
         self.engineDepth = engineDepth
+        // UI tests can lower the cosmetic delay while normal demo launches keep it.
+        self.engineReplyDelaySeconds = Self.initialEngineReplyDelaySeconds
         // Keep the selected ChessUI artwork available for menus and board updates.
         self.pieceSet = pieceSet
         // Keep the selected ChessUI board theme available for menus and board updates.
         self.boardTheme = boardTheme
         // Standard initial chess position in FEN format.
         let initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        self.positionFEN = initialFen
         // ChessUI owns the board and perspective rendering.
         self.boardModel = ChessBoardModel(
             fen: initialFen,
@@ -97,6 +102,30 @@ final class GameViewModel: ObservableObject {
         self.boardModel.allowsOpponentMoves = false
         // Record the initial position for repetition tracking.
         recordPosition()
+    }
+
+    /// Normal app runs use a visible thinking pause; UI tests can override it
+    /// so move-flow coverage does not spend most of its time intentionally idle.
+    private static var initialEngineReplyDelaySeconds: TimeInterval {
+        let environment = ProcessInfo.processInfo.environment
+        guard let delayValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"],
+              let delay = TimeInterval(delayValue)
+        else {
+            return 2.5
+        }
+
+        return max(delay, 0)
+    }
+
+    /// UI tests use scripted opponent replies so interaction tests are not
+    /// coupled to Stockfish startup time or changing engine choices.
+    static var usesScriptedUITestEngine: Bool {
+        ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE"] == "1"
+    }
+
+    /// Test-only controls are opt-in through the UI test launch environment.
+    var showsUITestMoveControls: Bool {
+        Self.usesScriptedUITestEngine
     }
 
     /// Starts the game loop on first appearance.
@@ -123,6 +152,18 @@ final class GameViewModel: ObservableObject {
         scheduleEngineMove()
     }
 
+    /// Test-only move entry point used when simulator coordinate taps are too
+    /// brittle for a UI smoke test.
+    func performUITestMove(_ coordinateMove: String) {
+        guard Self.usesScriptedUITestEngine,
+              let move = try? Move(string: coordinateMove)
+        else {
+            return
+        }
+
+        handleUserMove(move: move, isLegal: boardModel.game.legalMoves.contains(move))
+    }
+
     /// Ends the game immediately; used when the user resigns.
     func resign() {
         // We simply stop the engine; the UI dismisses in the view layer.
@@ -145,6 +186,8 @@ final class GameViewModel: ObservableObject {
         boardModel.game.apply(move: move)
         // Serialize the new position into FEN for ChessUI.
         let fen = fenSerializer.fen(from: boardModel.game.position)
+        // Keep a black-box state marker available to UI tests.
+        positionFEN = fen
         // ChessUI consumes the new FEN plus the move that produced it, then
         // owns move animation and last-move highlighting.
         boardModel.setFEN(fen, animatedMove: move)
@@ -172,6 +215,11 @@ final class GameViewModel: ObservableObject {
         guard !isEngineThinking else { return }
         // Only search when it is the engine's turn.
         guard boardModel.game.position.state.turn == playerColor.opposite else { return }
+
+        if Self.usesScriptedUITestEngine {
+            applyScriptedEngineMove()
+            return
+        }
 
         // Flip the flag to block additional search requests.
         isEngineThinking = true
@@ -220,6 +268,31 @@ final class GameViewModel: ObservableObject {
                 self?.handleEngineTimeout(token: token)
             }
         }
+    }
+
+    /// Applies a deterministic legal opponent move for UI tests.
+    private func applyScriptedEngineMove() {
+        let candidateMoves: [String]
+        switch playerColor.opposite {
+        case .white:
+            candidateMoves = ["e2e4", "g1f3", "f1c4", "d2d3"]
+        case .black:
+            candidateMoves = ["e7e5", "b8c6", "g8f6", "f8c5"]
+        }
+
+        let legalMoves = boardModel.game.legalMoves
+        let scriptedMove = candidateMoves
+            .compactMap { try? Move(string: $0) }
+            .first { legalMoves.contains($0) }
+        let move = scriptedMove ?? legalMoves.first
+
+        guard let move else {
+            endGame(title: "Draw", message: "No legal moves remain.")
+            return
+        }
+
+        applyMove(move: move)
+        _ = checkForGameEnd()
     }
 
     /// Handles the engine move after receiving a "bestmove" line.

@@ -34,7 +34,17 @@ Key files to read:
 - `SwiftChessDemo/GameViewModel.swift`: rules, display state, engine, and endgame
   logic.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
-  in-game piece-set and board-theme selection.
+  in-game piece-set selection, board-theme selection, and four-full-move game
+  flows from both white and black perspectives.
+
+Automated UI tests:
+- Run the suite with `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`.
+- The game-flow UI tests set `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1` so
+  opponent replies are deterministic instead of coming from Stockfish.
+- The same tests also set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` and
+  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to keep simulator runs
+  fast. Normal app launches do not set these flags and continue to use
+  Stockfish for engine moves.
 
 Local dependencies:
 - `../SwiftChessTools`: local Swift package products `ChessCore` and `ChessUI`.

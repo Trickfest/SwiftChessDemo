@@ -2,6 +2,24 @@ import ChessUI
 import XCTest
 
 final class SwiftChessDemoUITests: XCTestCase {
+    private enum FENTurn {
+        case white
+        case black
+
+        var token: String {
+            switch self {
+            case .white:
+                return " w "
+            case .black:
+                return " b "
+            }
+        }
+    }
+
+    private struct UITestFailure: Error, CustomStringConvertible {
+        let description: String
+    }
+
     private var pieceSetNames: [String] {
         ChessPieceSet.availableSets.map(\.displayName)
     }
@@ -12,6 +30,72 @@ final class SwiftChessDemoUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    func testWhiteGameFlowCompletesFourFullMoves() throws {
+        let app = moveSmokeTestApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        var position = try boardValue(in: app)
+        for (index, move) in ["e2e4", "g1f3", "f1c4", "d2d3"].enumerated() {
+            try tapMove(move, in: app)
+
+            let afterWhiteMove = try waitForBoardTurn(
+                .black,
+                from: position,
+                in: app,
+                named: "White move \(index + 1)"
+            )
+            position = try waitForBoardTurn(
+                .white,
+                from: afterWhiteMove,
+                in: app,
+                named: "Black reply \(index + 1)"
+            )
+        }
+
+        attachScreenshot(from: app, named: "SwiftChessDemo - White four full moves")
+    }
+
+    func testBlackGameFlowCompletesFourFullMoves() throws {
+        let app = moveSmokeTestApplication()
+        app.launch()
+
+        try select("Play as Black", in: app)
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let initialPosition = try boardValue(in: app)
+        let afterWhiteEngineMove = try waitForBoardTurn(
+            .black,
+            from: initialPosition,
+            in: app,
+            named: "opening White engine move"
+        )
+
+        var position = afterWhiteEngineMove
+        for (index, move) in ["e7e5", "b8c6", "g8f6", "f8c5"].enumerated() {
+            try tapMove(move, in: app)
+
+            position = try waitForBoardTurn(
+                .white,
+                from: position,
+                in: app,
+                named: "Black move \(index + 1)"
+            )
+
+            if index < 3 {
+                position = try waitForBoardTurn(
+                    .black,
+                    from: position,
+                    in: app,
+                    named: "White reply \(index + 2)"
+                )
+            }
+        }
+
+        attachScreenshot(from: app, named: "SwiftChessDemo - Black four full moves")
     }
 
     func testGamePieceSetPickerSelectsEveryBuiltInSetAndUpdatesBoard() throws {
@@ -25,8 +109,8 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "game piece set picker"
         )
         let board = try requireElement(
-            app.otherElements["Game.board"].firstMatch,
-            named: "game board"
+            app.descendants(matching: .any)["Game.boardState"].firstMatch,
+            named: "game board state"
         )
 
         XCTAssertEqual(picker.value as? String, "Art Deco Monochrome")
@@ -51,8 +135,8 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "game board theme picker"
         )
         let board = try requireElement(
-            app.otherElements["Game.board"].firstMatch,
-            named: "game board"
+            app.descendants(matching: .any)["Game.boardState"].firstMatch,
+            named: "game board state"
         )
 
         XCTAssertEqual(picker.value as? String, "Art Deco Monochrome")
@@ -64,6 +148,91 @@ final class SwiftChessDemoUITests: XCTestCase {
             XCTAssertTrue((board.value as? String)?.contains("Board: \(boardThemeName)") == true)
             attachScreenshot(from: app, named: "SwiftChessDemo Board - \(boardThemeName)")
         }
+    }
+
+    private func moveSmokeTestApplication() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "1.0"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE"] = "1"
+        return app
+    }
+
+    private func tapMove(
+        _ move: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        try requireElement(
+            app.buttons["UITest.move.\(move)"].firstMatch,
+            named: "\(move) UI test move button",
+            file: file,
+            line: line
+        )
+        .tap()
+    }
+
+    private func waitForBoardTurn(
+        _ turn: FENTurn,
+        from boardValue: String,
+        in app: XCUIApplication,
+        named changeName: String,
+        timeout: TimeInterval = 20,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            let currentValue = try self.boardValue(in: app, file: file, line: line)
+            if currentValue != boardValue,
+               currentValue.contains(turn.token) {
+                return currentValue
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        let message = "Board value did not change to \(turn.token.trimmingCharacters(in: .whitespaces)) after \(changeName)"
+        XCTFail(message, file: file, line: line)
+        throw UITestFailure(description: message)
+    }
+
+    private func boardValue(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        let uiTestFEN = app.staticTexts["UITest.positionFEN"].firstMatch
+        if uiTestFEN.exists {
+            return uiTestFEN.label
+        }
+
+        let board = try requireElement(
+            app.descendants(matching: .any)["Game.boardState"].firstMatch,
+            named: "game board state",
+            file: file,
+            line: line
+        )
+
+        return board.value as? String ?? ""
+    }
+
+    private func select(
+        _ optionName: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let option = waitForOption(named: optionName, in: app)
+        XCTAssertTrue(
+            option.exists,
+            "Missing option \(optionName)",
+            file: file,
+            line: line
+        )
+        option.tap()
     }
 
     private func select(
