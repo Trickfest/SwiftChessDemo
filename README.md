@@ -5,6 +5,12 @@ libraries into a realistic, shippable SwiftUI chess experience.
 The code is intentionally small, readable, and heavily commented so you can
 trace how each module contributes to the final behavior.
 
+Licensing note: SwiftChessDemo is licensed under the GNU General Public License
+v3.0 because the app links with Stockfish through `../StockfishEmbedded`.
+`../SwiftChessTools` remains MIT-licensed in its own repo, but this app's
+distributed binary should be treated as a GPL-covered combined work. See
+`LICENSE` and `THIRD_PARTY.md` for details.
+
 Required after clone: make sure the sibling `../StockfishEmbedded` checkout has
 the required NNUE weights (Stockfish neural nets). These files are not in Git
 because they are large, but they are required to run the engine.

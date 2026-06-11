@@ -24,6 +24,18 @@ Keep downloaded NNUE files out of commits.
 - Use 4-space indentation and follow Swift API Design Guidelines.
 - Prefer `Type+Feature.swift` for extensions (e.g., `SFEngine+Sendable.swift`).
 - Keep the instructional comments; the project is intentionally annotated.
+- Keep source file headers aligned with the app's GPL v3.0 license. Do not add
+  personal author headers.
+
+## Licensing
+SwiftChessDemo links with `../StockfishEmbedded`, which embeds GPL-licensed
+Stockfish code. Keep this app licensed under the GNU General Public License
+v3.0 unless the engine integration is removed or replaced with a license path
+that supports a different app license.
+
+`../SwiftChessTools` remains MIT-licensed in its own repo; using it here does
+not change that package's license. Dependency/license changes must update
+`THIRD_PARTY.md`.
 
 ## Testing Guidelines
 - Run the SwiftChessDemo UI tests after changing setup-screen, game-screen,

@@ -23,6 +23,8 @@ for a release.
 
 ### Changed
 
+- Clarified SwiftChessDemo's GPL v3.0 license posture because the app links with
+  Stockfish through `StockfishEmbedded`.
 - Moved piece-set and board-theme selection off the launch screen and onto the
   game screen so display options can be reviewed without resigning.
 - Added a short opponent "thinking" pause before requesting a Stockfish move, so

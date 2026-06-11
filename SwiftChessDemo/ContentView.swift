@@ -1,8 +1,11 @@
 //
-//  ContentView.swift
-//  SwiftChessDemo
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
 //
-//  Created by Mark Harris on 1/3/26.
+// See THIRD_PARTY.md for dependency attribution and license details.
+//
+// Licensed under the GNU General Public License v3.0.
+// You may obtain a copy of the License at: https://www.gnu.org/licenses/gpl-3.0.html
+// See the LICENSE file for more information.
 //
 
 import SwiftUI
