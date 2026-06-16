@@ -25,6 +25,9 @@ for a release.
 
 - Clarified SwiftChessDemo's GPL v3.0 license posture because the app links with
   Stockfish through `StockfishEmbedded`.
+- Updated game-end handling to use ChessCore's `Game.status`,
+  `Game.drawClaims`, and `Game.claimDraw(_:)` APIs for checkmate, stalemate,
+  automatic draws, and claimable draw rules.
 - Moved piece-set and board-theme selection off the launch screen and onto the
   game screen so display options can be reviewed without resigning.
 - Added a short opponent "thinking" pause before requesting a Stockfish move, so
@@ -33,5 +36,7 @@ for a release.
 
 ### Fixed
 
+- Preserved ChessCore move history and repetition state after animated board
+  updates so draw status remains accurate while ChessUI renders from FEN.
 - Corrected delayed engine-request cleanup so pending opponent replies are
   cancelled when the game view is dismissed or the engine is stopped.

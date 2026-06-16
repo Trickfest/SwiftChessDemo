@@ -30,6 +30,8 @@ Data flow at a glance:
 - User moves on the board -> `ChessUI` -> `GameViewModel.handleUserMove`.
 - The move is validated/applied in `ChessCore`, then serialized to FEN.
 - FEN is pushed back into `ChessUI` to update the board UI.
+- Terminal game state and claimable draws are read from ChessCore's
+  `Game.status` and draw-claim APIs.
 - When it is the engine's turn, the current FEN is sent to Stockfish.
 - Stockfish returns `bestmove`, which is converted to a `ChessCore.Move`.
 
@@ -37,8 +39,8 @@ Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for side and engine depth.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set and board-theme
   switching during play, and navigation flow.
-- `SwiftChessDemo/GameViewModel.swift`: rules, display state, engine, and endgame
-  logic.
+- `SwiftChessDemo/GameViewModel.swift`: display state, engine coordination, safe
+  move application, and ChessCore game-status integration.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, and four-full-move game
   flows from both white and black perspectives.

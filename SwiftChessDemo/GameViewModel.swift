@@ -74,8 +74,6 @@ final class GameViewModel: ObservableObject {
     private var engineTimeoutTask: Task<Void, Never>?
     /// Work item used to wait briefly before starting an engine search.
     private var engineRequestDelayWorkItem: DispatchWorkItem?
-    /// FEN-position counts to detect threefold repetition.
-    private var positionCounts: [String: Int] = [:]
     /// Token used to ignore stale engine responses after cancellation.
     private var searchToken = UUID()
     /// Ensures we only start the engine once when the view appears.
@@ -97,7 +95,7 @@ final class GameViewModel: ObservableObject {
         // Keep the selected ChessUI board theme available for menus and board updates.
         self.boardTheme = boardTheme
         // Standard initial chess position in FEN format.
-        let initialFen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        let initialFen = Position.standardStartingFEN
         self.positionFEN = initialFen
         // ChessUI owns the board and perspective rendering.
         self.boardModel = ChessBoardModel(
@@ -110,8 +108,6 @@ final class GameViewModel: ObservableObject {
         self.boardModel.validatesMoves = true
         // Prevent user from moving both sides; the engine is the opponent.
         self.boardModel.allowsOpponentMoves = false
-        // Record the initial position for repetition tracking.
-        recordPosition()
     }
 
     /// Normal app runs use a visible thinking pause; UI tests can override it
@@ -155,7 +151,7 @@ final class GameViewModel: ObservableObject {
         guard isLegal else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
         // Apply the move in ChessCore and refresh the board UI.
-        applyMove(move: move)
+        guard applyMove(move: move) else { return }
         // Stop here if the move ended the game.
         if checkForGameEnd() { return }
         // Otherwise, let the opponent appear to think before asking Stockfish for a reply.
@@ -190,19 +186,33 @@ final class GameViewModel: ObservableObject {
         stopEngineIfNeeded()
     }
 
-    /// Applies a move to the ChessCore game and updates the board UI with FEN.
-    private func applyMove(move: Move) {
-        // ChessCore updates internal rules state and move counters here.
-        boardModel.game.apply(move: move)
+    /// Applies a legal move to the ChessCore game and updates the board UI with FEN.
+    @discardableResult
+    private func applyMove(
+        move: Move,
+        failureTitle: String = "Move Error",
+        failureMessage: String = "The move is not legal in the current position."
+    ) -> Bool {
+        do {
+            // ChessCore updates internal rules state, move counters, and repetition history here.
+            try boardModel.game.applyLegal(move: move)
+        } catch {
+            endGame(title: failureTitle, message: failureMessage)
+            return false
+        }
+
+        // Preserve the complete Game object because `setFEN` rebuilds a board-only game for rendering.
+        let updatedGame = boardModel.game.copy()
         // Serialize the new position into FEN for ChessUI.
-        let fen = fenSerializer.fen(from: boardModel.game.position)
+        let fen = fenSerializer.fen(from: updatedGame.position)
         // Keep a black-box state marker available to UI tests.
         positionFEN = fen
         // ChessUI consumes the new FEN plus the move that produced it, then
         // owns move animation and last-move highlighting.
         boardModel.setFEN(fen, animatedMove: move)
-        // Track the position for threefold repetition.
-        recordPosition()
+        // Restore ChessCore's full game history for status, repetition, and draw-claim APIs.
+        boardModel.game = updatedGame
+        return true
     }
 
     /// Waits briefly before starting Stockfish so the previous move feedback remains visible.
@@ -301,7 +311,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        applyMove(move: move)
+        guard applyMove(move: move) else { return }
         _ = checkForGameEnd()
     }
 
@@ -324,7 +334,14 @@ final class GameViewModel: ObservableObject {
         finishEngineSearch(engine: engine)
         // Convert the UCI string into a ChessCore move and apply it.
         do {
-            applyMove(move: try Move(string: normalized))
+            let engineMove = try Move(string: normalized)
+            guard applyMove(
+                move: engineMove,
+                failureTitle: "Engine Error",
+                failureMessage: "Stockfish returned an illegal move."
+            ) else {
+                return
+            }
         } catch {
             endGame(title: "Engine Error", message: "Stockfish returned an invalid move.")
             return
@@ -386,53 +403,30 @@ final class GameViewModel: ObservableObject {
         engine = nil
     }
 
-    /// Records the current position for threefold repetition detection.
-    private func recordPosition() {
-        // Serialize the current board to FEN for stable hashing.
-        let fen = fenSerializer.fen(from: boardModel.game.position)
-        // FEN fields 0-3 are board, turn, castling, en passant.
-        // We ignore move counters so positions compare correctly.
-        let key = fen.split(separator: " ").prefix(4).joined(separator: " ")
-        // Increment the repetition count for this normalized position.
-        positionCounts[key, default: 0] += 1
-    }
-
     /// Evaluates draw and win conditions using ChessCore state.
     private func checkForGameEnd() -> Bool {
-        // Checkmate: side to move has no legal moves while in check.
-        if boardModel.game.isCheckmate {
-            let winner = boardModel.game.position.state.turn.opposite
+        switch boardModel.game.status {
+        case .checkmate(let winner):
             let message = winner == playerColor ? "You win" : "Stockfish wins"
             endGame(title: "Checkmate", message: message)
             return true
-        }
 
-        // Stalemate: no legal moves but not in check.
-        if !boardModel.game.isCheck && boardModel.game.legalMoves.isEmpty {
-            endGame(title: "Stalemate", message: "Draw")
+        case .draw(let reason):
+            endGame(title: drawTitle(for: reason), message: "Draw")
+            return true
+
+        case .ongoing(let drawClaims):
+            guard let drawClaim = preferredDrawClaim(from: drawClaims) else {
+                return false
+            }
+            do {
+                try boardModel.game.claimDraw(drawClaim)
+            } catch {
+                return false
+            }
+            endGame(title: drawTitle(for: drawReason(for: drawClaim)), message: "Draw")
             return true
         }
-
-        // Threefold repetition: same position seen at least three times.
-        if isThreefoldRepetition() {
-            endGame(title: "Draw by repetition", message: "Draw")
-            return true
-        }
-
-        // 50-move rule: 100 half-moves with no pawn moves or captures.
-        if boardModel.game.position.counter.halfMoves >= 100 {
-            // ChessCore tracks half-moves; 100 half-moves equals the 50-move rule.
-            endGame(title: "Draw by 50-move rule", message: "Draw")
-            return true
-        }
-
-        // Insufficient material: check minimal endgames that cannot mate.
-        if isInsufficientMaterial() {
-            endGame(title: "Draw by insufficient material", message: "Draw")
-            return true
-        }
-
-        return false
     }
 
     /// Presents the game result and stops the engine.
@@ -442,56 +436,45 @@ final class GameViewModel: ObservableObject {
         activeAlert = .result(GameResult(title: title, message: message))
     }
 
-    /// Checks the recorded position history for threefold repetition.
-    private func isThreefoldRepetition() -> Bool {
-        // Use the same keying strategy as recordPosition().
-        let fen = fenSerializer.fen(from: boardModel.game.position)
-        let key = fen.split(separator: " ").prefix(4).joined(separator: " ")
-        return (positionCounts[key] ?? 0) >= 3
+    /// Picks a claimable draw to preserve the demo's automatic draw UX.
+    private func preferredDrawClaim(from drawClaims: Set<GameDrawClaim>) -> GameDrawClaim? {
+        if drawClaims.contains(.threefoldRepetition) {
+            return .threefoldRepetition
+        }
+        if drawClaims.contains(.fiftyMoveRule) {
+            return .fiftyMoveRule
+        }
+        return nil
     }
 
-    /// Applies simple insufficient-material rules for basic endgames.
-    private func isInsufficientMaterial() -> Bool {
-        // Enumerate all pieces currently on the board.
-        let pieces = boardModel.game.position.board.enumeratedPieces()
-        var counts: [PieceKind: Int] = [:]
-        for (_, piece) in pieces {
-            counts[piece.kind, default: 0] += 1
+    /// Converts a claimable rule into the terminal draw reason shown by the UI.
+    private func drawReason(for drawClaim: GameDrawClaim) -> GameDrawReason {
+        switch drawClaim {
+        case .fiftyMoveRule:
+            return .fiftyMoveRule
+        case .threefoldRepetition:
+            return .threefoldRepetition
         }
+    }
 
-        // Any pawns, rooks, or queens means checkmate is still possible.
-        if (counts[.pawn] ?? 0) > 0 { return false }
-        if (counts[.rook] ?? 0) > 0 { return false }
-        if (counts[.queen] ?? 0) > 0 { return false }
-
-        // Only minor pieces (bishops/knights) remain.
-        let bishops = counts[.bishop] ?? 0
-        let knights = counts[.knight] ?? 0
-
-        // King vs king is already covered; now check minor-piece cases.
-        if bishops == 0 && knights == 0 {
-            return true
+    /// User-facing alert title for a terminal draw.
+    private func drawTitle(for reason: GameDrawReason) -> String {
+        switch reason {
+        case .stalemate:
+            return "Stalemate"
+        case .insufficientMaterial:
+            return "Draw by insufficient material"
+        case .deadPosition:
+            return "Draw by dead position"
+        case .seventyFiveMoveRule:
+            return "Draw by 75-move rule"
+        case .fivefoldRepetition:
+            return "Draw by repetition"
+        case .fiftyMoveRule:
+            return "Draw by 50-move rule"
+        case .threefoldRepetition:
+            return "Draw by repetition"
         }
-
-        // King and a single minor piece cannot force mate.
-        if bishops + knights == 1 {
-            return true
-        }
-
-        // Two bishops on the same color squares also cannot force mate.
-        if bishops == 2 && knights == 0 && pieces.count == 4 {
-            // Filter to the bishops and check their square colors.
-            let bishopSquares = pieces.filter { $0.1.kind == .bishop }.map { $0.0 }
-            if bishopSquares.count == 2 {
-                // Sum of file+rank parity identifies square color.
-                let colors = bishopSquares.map { ($0.file + $0.rank) % 2 }
-                if colors[0] == colors[1] {
-                    return true
-                }
-            }
-        }
-
-        return false
     }
 
     /// Normalizes promotion piece casing before parsing engine output.
