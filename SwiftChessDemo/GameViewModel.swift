@@ -104,10 +104,9 @@ final class GameViewModel: ObservableObject {
             boardTheme: boardTheme,
             pieceSet: pieceSet
         )
-        // Ask the board to validate moves (it uses ChessCore internally).
-        self.boardModel.validatesMoves = true
-        // Prevent user from moving both sides; the engine is the opponent.
-        self.boardModel.allowsOpponentMoves = false
+        // Let ChessUI report only legal moves for the side to move; the view
+        // model still gates those moves to the human player's turn.
+        self.boardModel.interactionMode = .legalMovesOnly
     }
 
     /// Normal app runs use a visible thinking pause; UI tests can override it

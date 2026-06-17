@@ -35,8 +35,8 @@ struct GameView: View {
         VStack(spacing: 16) {
             // ChessUI view; delivers user moves via the onMove callback.
             ChessBoardView(model: viewModel.boardModel)
-                .onMove { move, isLegal, _, _, _, _ in
-                    viewModel.handleUserMove(move: move, isLegal: isLegal)
+                .onMove { attempt in
+                    viewModel.handleUserMove(move: attempt.move, isLegal: attempt.isLegal)
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .overlay(alignment: .topLeading) {
