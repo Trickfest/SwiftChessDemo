@@ -183,6 +183,149 @@ final class SwiftChessDemoUITests: XCTestCase {
         XCTAssertTrue(hiddenValue.contains("Coordinates: Hidden"))
     }
 
+    func testGameReferenceComponentsRenderAndMoveListUpdates() throws {
+        let app = moveSmokeTestApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.gameStatus"].firstMatch,
+            named: "game status display"
+        )
+        try requireElement(
+            app.staticTexts["White to move"].firstMatch,
+            named: "initial game status"
+        )
+
+        let initialPosition = try boardValue(in: app)
+        try tapMove("e2e4", in: app)
+        let afterWhiteMove = try waitForBoardTurn(
+            .black,
+            from: initialPosition,
+            in: app,
+            named: "White opening move"
+        )
+
+        let whiteMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.1"].firstMatch,
+            named: "White move-list record"
+        )
+        XCTAssertEqual(whiteMove.value as? String, "e2e4")
+        XCTAssertTrue(whiteMove.label.contains("White e4"))
+
+        _ = try waitForBoardTurn(
+            .white,
+            from: afterWhiteMove,
+            in: app,
+            named: "Black scripted reply"
+        )
+
+        let blackMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.2"].firstMatch,
+            named: "Black move-list record"
+        )
+        XCTAssertEqual(blackMove.value as? String, "e7e5")
+        XCTAssertTrue(blackMove.label.contains("Black e5"))
+    }
+
+    func testGameDisplayOptionsToggleStatusAndMoveList() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let statusToggle = try requireElement(
+            app.descendants(matching: .any)["Game.statusToggle"].firstMatch,
+            named: "status toggle"
+        )
+
+        XCTAssertTrue(app.descendants(matching: .any)["ChessUI.gameStatus"].firstMatch.exists)
+        try waitForElementValue(statusToggle, expectedValue: "Shown", named: "status toggle")
+        statusToggle.tap()
+        try waitForElementValue(statusToggle, expectedValue: "Hidden", named: "status toggle")
+
+        statusToggle.tap()
+        try waitForElementValue(statusToggle, expectedValue: "Shown", named: "status toggle")
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.gameStatus"].firstMatch,
+            named: "restored game status display"
+        )
+
+        let moveListToggle = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.moveListToggle"].firstMatch,
+            named: "move-list toggle",
+            in: app
+        )
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList"].firstMatch,
+            named: "game move list"
+        )
+
+        try waitForElementValue(moveListToggle, expectedValue: "Shown", named: "move-list toggle")
+        moveListToggle.tap()
+        try waitForElementValue(moveListToggle, expectedValue: "Hidden", named: "move-list toggle")
+
+        moveListToggle.tap()
+        try waitForElementValue(moveListToggle, expectedValue: "Shown", named: "move-list toggle")
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList"].firstMatch,
+            named: "restored game move list"
+        )
+    }
+
+    @discardableResult
+    private func scrollUntilHittable(
+        _ element: XCUIElement,
+        named name: String,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let deadline = Date().addingTimeInterval(5)
+        let scrollView = app.scrollViews.firstMatch
+
+        repeat {
+            if element.exists, element.isHittable {
+                return element
+            }
+
+            if scrollView.exists {
+                scrollView.swipeUp()
+            } else {
+                app.swipeUp()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+
+        XCTAssertTrue(element.exists, "Missing \(name)", file: file, line: line)
+        XCTAssertTrue(element.isHittable, "\(name) is not hittable", file: file, line: line)
+        return element
+    }
+
+    private func waitForElementValue(
+        _ element: XCUIElement,
+        expectedValue: String,
+        named name: String,
+        timeout: TimeInterval = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastValue = ""
+
+        repeat {
+            lastValue = element.value as? String ?? ""
+            if lastValue == expectedValue {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        XCTAssertEqual(lastValue, expectedValue, "\(name) value", file: file, line: line)
+    }
+
     private func moveSmokeTestApplication() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"

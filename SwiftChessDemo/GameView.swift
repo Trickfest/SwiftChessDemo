@@ -34,37 +34,9 @@ struct GameView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            // ChessUI view; delivers user moves via the onMove callback.
-            ChessBoardView(model: viewModel.boardModel)
-                .onMove { attempt in
-                    viewModel.handleUserMove(move: attempt.move, isLegal: attempt.isLegal)
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .overlay(alignment: .topLeading) {
-                    // Separate state marker keeps board assertions independent
-                    // from visual board rendering.
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Game board")
-                        .accessibilityIdentifier("Game.boardState")
-                        .accessibilityValue(boardAccessibilityValue)
-                        .allowsHitTesting(false)
-                }
+        ScrollView {
+            gameLayout
                 .padding()
-
-            displayControls
-
-            if viewModel.showsUITestMoveControls {
-                uiTestMoveControls
-            }
-
-            // Simple resign button to demonstrate game-ending flow.
-            Button("Resign") {
-                viewModel.requestResignConfirmation()
-            }
-            .buttonStyle(.bordered)
         }
         .navigationTitle("Game")
         .navigationBarTitleDisplayMode(.inline)
@@ -109,6 +81,70 @@ struct GameView: View {
         }
     }
 
+    @ViewBuilder
+    private var gameLayout: some View {
+        if horizontalSizeClass == .regular {
+            regularGameLayout
+        } else {
+            compactGameLayout
+        }
+    }
+
+    private var regularGameLayout: some View {
+        HStack(alignment: .top, spacing: 24) {
+            boardArea
+                .frame(maxWidth: 720)
+
+            referencePanel
+                .frame(width: 360)
+        }
+        .frame(maxWidth: 1120, alignment: .center)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var compactGameLayout: some View {
+        VStack(spacing: 16) {
+            boardArea
+            referencePanel
+        }
+        .frame(maxWidth: 620)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var boardArea: some View {
+        VStack(spacing: 12) {
+            if viewModel.showsGameStatus {
+                statusDisplay
+            }
+
+            if horizontalSizeClass != .regular, viewModel.showsMoveList {
+                compactMoveListStrip
+            }
+
+            // ChessUI view; delivers user moves via the onMove callback.
+            ChessBoardView(model: viewModel.boardModel)
+                .onMove { attempt in
+                    viewModel.handleUserMove(move: attempt.move, isLegal: attempt.isLegal)
+                }
+                .aspectRatio(1, contentMode: .fit)
+                .overlay(alignment: .topLeading) {
+                    // Separate state marker keeps board assertions independent
+                    // from visual board rendering.
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Game board")
+                        .accessibilityIdentifier("Game.boardState")
+                        .accessibilityValue(boardAccessibilityValue)
+                        .allowsHitTesting(false)
+                }
+
+            if viewModel.showsUITestMoveControls {
+                uiTestMoveControls
+            }
+        }
+    }
+
     private var boardAccessibilityValue: String {
         let coordinateState = viewModel.showsCoordinateLabels ? "Shown" : "Hidden"
 
@@ -118,33 +154,105 @@ struct GameView: View {
             + "FEN: \(viewModel.positionFEN)"
     }
 
-    private var displayControls: some View {
-        Group {
+    private var referencePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            displayOptionsSection
+
+            if horizontalSizeClass == .regular, viewModel.showsMoveList {
+                moveListSection
+            }
+
+            Button {
+                viewModel.requestResignConfirmation()
+            } label: {
+                Label("Resign", systemImage: "flag")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("Game.resignButton")
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private var displayOptionsSection: some View {
+        panelSection("Display") {
             if horizontalSizeClass == .regular {
-                regularDisplayControls
+                VStack(spacing: 10) {
+                    pieceSetControl
+                    boardThemeControl
+                    coordinateLabelsToggle
+                    gameStatusToggle
+                    moveListToggle
+                }
             } else {
-                compactDisplayControls
+                compactDisplayOptions
             }
         }
-        .padding(.horizontal)
     }
 
-    private var regularDisplayControls: some View {
-        HStack(spacing: 12) {
-            pieceSetControl
-            boardThemeControl
-            coordinateLabelsToggle
-        }
-    }
-
-    private var compactDisplayControls: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 12) {
+    private var compactDisplayOptions: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
                 pieceSetControl
                 boardThemeControl
             }
 
-            coordinateLabelsToggle
+            VStack(spacing: 8) {
+                coordinateLabelsToggle
+                gameStatusToggle
+                moveListToggle
+            }
+        }
+    }
+
+    private var statusDisplay: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ChessGameStatusView(
+                status: viewModel.gameStatus,
+                turn: viewModel.sideToMove
+            ) { claim in
+                viewModel.claimDraw(claim)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.08))
+        }
+    }
+
+    private var compactMoveListStrip: some View {
+        ChessMoveListView(
+            records: viewModel.moveRecords,
+            selectedPly: viewModel.selectedMovePly,
+            title: nil,
+            layout: .horizontal,
+            scrollIndicatorVisibility: .hidden
+        ) { record in
+            viewModel.selectMoveRecord(record)
+        }
+        .frame(maxWidth: .infinity, minHeight: 42, maxHeight: 42)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.08))
+        }
+    }
+
+    private var moveListSection: some View {
+        panelSection("Moves") {
+            ChessMoveListView(
+                records: viewModel.moveRecords,
+                selectedPly: viewModel.selectedMovePly,
+                title: nil,
+                layout: .vertical
+            ) { record in
+                viewModel.selectMoveRecord(record)
+            }
+            .frame(height: horizontalSizeClass == .regular ? 260 : 150)
         }
     }
 
@@ -189,26 +297,36 @@ struct GameView: View {
     }
 
     private var coordinateLabelsToggle: some View {
-        Button {
+        displayToggleRow(
+            title: "Coordinates",
+            systemImage: "number.square",
+            isOn: viewModel.showsCoordinateLabels,
+            accessibilityIdentifier: "Game.coordinateLabelsToggle"
+        ) {
             viewModel.setCoordinateLabelsVisible(!viewModel.showsCoordinateLabels)
-        } label: {
-            HStack(spacing: 8) {
-                Label("Coordinates", systemImage: "number.square")
-                    .font(.caption)
-
-                Spacer(minLength: 12)
-
-                Toggle("Coordinates", isOn: .constant(viewModel.showsCoordinateLabels))
-                    .labelsHidden()
-                    .allowsHitTesting(false)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("Game.coordinateLabelsToggle")
-        .accessibilityLabel("Coordinates")
-        .accessibilityValue(viewModel.showsCoordinateLabels ? "Shown" : "Hidden")
+    }
+
+    private var gameStatusToggle: some View {
+        displayToggleRow(
+            title: "Status",
+            systemImage: "list.bullet.rectangle",
+            isOn: viewModel.showsGameStatus,
+            accessibilityIdentifier: "Game.statusToggle"
+        ) {
+            viewModel.setGameStatusVisible(!viewModel.showsGameStatus)
+        }
+    }
+
+    private var moveListToggle: some View {
+        displayToggleRow(
+            title: "Move list",
+            systemImage: "list.number",
+            isOn: viewModel.showsMoveList,
+            accessibilityIdentifier: "Game.moveListToggle"
+        ) {
+            viewModel.setMoveListVisible(!viewModel.showsMoveList)
+        }
     }
 
     private var uiTestMoveControls: some View {
@@ -253,5 +371,52 @@ struct GameView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, minHeight: 44)
+    }
+
+    private func displayToggleRow(
+        title: String,
+        systemImage: String,
+        isOn: Bool,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Label(title, systemImage: systemImage)
+                    .font(.caption)
+
+                Spacer(minLength: 12)
+
+                Toggle(title, isOn: .constant(isOn))
+                    .labelsHidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "Shown" : "Hidden")
+    }
+
+    private func panelSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            content()
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.08))
+        }
     }
 }

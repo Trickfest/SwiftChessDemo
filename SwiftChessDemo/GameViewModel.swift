@@ -62,6 +62,18 @@ final class GameViewModel: ObservableObject {
             boardModel.showsCoordinateLabels = showsCoordinateLabels
         }
     }
+    /// Controls whether the game screen shows ChessUI's status component.
+    @Published var showsGameStatus = true
+    /// Controls whether the game screen shows ChessUI's move-list component.
+    @Published var showsMoveList = true
+    /// ChessCore status mirrored for SwiftUI rendering.
+    @Published private(set) var gameStatus: GameStatus
+    /// Side to move mirrored for SwiftUI rendering.
+    @Published private(set) var sideToMove: PieceColor
+    /// Display-ready move records for ChessUI's move list.
+    @Published private(set) var moveRecords: [ChessMoveRecord] = []
+    /// Current move-list selection.
+    @Published var selectedMovePly: Int?
     /// Current FEN exposed to UI tests for black-box board-change assertions.
     @Published private(set) var positionFEN: String
 
@@ -74,6 +86,8 @@ final class GameViewModel: ObservableObject {
 
     /// FEN serializer from ChessCore.
     private let fenSerializer = FENSerializer()
+    /// Builds SAN-backed move-list records from pre-move game state.
+    private let moveRecordBuilder = ChessMoveRecordBuilder()
     /// The running Stockfish engine instance, if any.
     private var engine: SFEngine?
     /// Task used to time out engine searches.
@@ -103,6 +117,8 @@ final class GameViewModel: ObservableObject {
         // Standard initial chess position in FEN format.
         let initialFen = Position.standardStartingFEN
         self.positionFEN = initialFen
+        self.gameStatus = .ongoing(drawClaims: [])
+        self.sideToMove = Position.standard.state.turn
         // ChessUI owns the board and perspective rendering.
         self.boardModel = ChessBoardModel(
             fen: initialFen,
@@ -142,6 +158,21 @@ final class GameViewModel: ObservableObject {
     /// Updates whether ChessUI draws rank and file coordinate labels.
     func setCoordinateLabelsVisible(_ showsCoordinateLabels: Bool) {
         self.showsCoordinateLabels = showsCoordinateLabels
+    }
+
+    /// Updates whether the visible game status reference component is shown.
+    func setGameStatusVisible(_ showsGameStatus: Bool) {
+        self.showsGameStatus = showsGameStatus
+    }
+
+    /// Updates whether the visible move list reference component is shown.
+    func setMoveListVisible(_ showsMoveList: Bool) {
+        self.showsMoveList = showsMoveList
+    }
+
+    /// Selects a move-list record without changing the board position.
+    func selectMoveRecord(_ record: ChessMoveRecord) {
+        selectedMovePly = record.ply
     }
 
     /// Starts the game loop on first appearance.
@@ -191,6 +222,19 @@ final class GameViewModel: ObservableObject {
         activeAlert = .resignConfirmation
     }
 
+    /// Claims a draw offered by ChessCore's current game status.
+    func claimDraw(_ claim: GameDrawClaim) {
+        do {
+            try boardModel.game.claimDraw(claim)
+        } catch {
+            endGame(title: "Draw Claim Error", message: "That draw claim is not available.")
+            return
+        }
+
+        refreshGameSnapshot()
+        endGame(title: drawTitle(for: drawReason(for: claim)), message: "Draw")
+    }
+
     /// Called when the view disappears; ensures background work stops.
     func cleanup() {
         stopEngineIfNeeded()
@@ -204,8 +248,15 @@ final class GameViewModel: ObservableObject {
         failureMessage: String = "The move is not legal in the current position."
     ) -> Bool {
         do {
+            let record = try moveRecordBuilder.record(
+                for: move,
+                in: boardModel.game,
+                ply: moveRecords.count + 1
+            )
             // ChessCore updates internal rules state, move counters, and repetition history here.
             try boardModel.game.applyLegal(move: move)
+            moveRecords.append(record)
+            selectedMovePly = record.ply
         } catch {
             endGame(title: failureTitle, message: failureMessage)
             return false
@@ -222,6 +273,7 @@ final class GameViewModel: ObservableObject {
         boardModel.setFEN(fen, animatedMove: move)
         // Restore ChessCore's full game history for status, repetition, and draw-claim APIs.
         boardModel.game = updatedGame
+        refreshGameSnapshot(from: updatedGame)
         return true
     }
 
@@ -425,17 +477,8 @@ final class GameViewModel: ObservableObject {
             endGame(title: drawTitle(for: reason), message: "Draw")
             return true
 
-        case .ongoing(let drawClaims):
-            guard let drawClaim = preferredDrawClaim(from: drawClaims) else {
-                return false
-            }
-            do {
-                try boardModel.game.claimDraw(drawClaim)
-            } catch {
-                return false
-            }
-            endGame(title: drawTitle(for: drawReason(for: drawClaim)), message: "Draw")
-            return true
+        case .ongoing:
+            return false
         }
     }
 
@@ -446,17 +489,6 @@ final class GameViewModel: ObservableObject {
         activeAlert = .result(GameResult(title: title, message: message))
     }
 
-    /// Picks a claimable draw to preserve the demo's automatic draw UX.
-    private func preferredDrawClaim(from drawClaims: Set<GameDrawClaim>) -> GameDrawClaim? {
-        if drawClaims.contains(.threefoldRepetition) {
-            return .threefoldRepetition
-        }
-        if drawClaims.contains(.fiftyMoveRule) {
-            return .fiftyMoveRule
-        }
-        return nil
-    }
-
     /// Converts a claimable rule into the terminal draw reason shown by the UI.
     private func drawReason(for drawClaim: GameDrawClaim) -> GameDrawReason {
         switch drawClaim {
@@ -465,6 +497,13 @@ final class GameViewModel: ObservableObject {
         case .threefoldRepetition:
             return .threefoldRepetition
         }
+    }
+
+    /// Refreshes published state derived from the backing ChessCore game.
+    private func refreshGameSnapshot(from game: Game? = nil) {
+        let game = game ?? boardModel.game
+        gameStatus = game.status
+        sideToMove = game.position.state.turn
     }
 
     /// User-facing alert title for a terminal draw.
