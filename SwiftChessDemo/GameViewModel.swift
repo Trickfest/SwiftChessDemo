@@ -11,6 +11,7 @@
 import Combine
 import ChessCore
 import ChessUI
+import ChessUCI
 
 /// Coordinates the chess game state, the UI, and the embedded engine.
 ///
@@ -66,6 +67,8 @@ final class GameViewModel: ObservableObject {
     @Published var showsGameStatus = true
     /// Controls whether the game screen shows ChessUI's move-list component.
     @Published var showsMoveList = true
+    /// Controls whether the game screen shows ChessUI's evaluation bar.
+    @Published var showsEvaluationBar = true
     /// ChessCore status mirrored for SwiftUI rendering.
     @Published private(set) var gameStatus: GameStatus
     /// Side to move mirrored for SwiftUI rendering.
@@ -74,6 +77,8 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var moveRecords: [ChessMoveRecord] = []
     /// Current move-list selection.
     @Published var selectedMovePly: Int?
+    /// Display-ready evaluation derived from parsed engine output.
+    @Published private(set) var evaluation: ChessEvaluation
     /// Current FEN exposed to UI tests for black-box board-change assertions.
     @Published private(set) var positionFEN: String
 
@@ -119,6 +124,7 @@ final class GameViewModel: ObservableObject {
         self.positionFEN = initialFen
         self.gameStatus = .ongoing(drawClaims: [])
         self.sideToMove = Position.standard.state.turn
+        self.evaluation = Self.initialEvaluation
         // ChessUI owns the board and perspective rendering.
         self.boardModel = ChessBoardModel(
             fen: initialFen,
@@ -142,6 +148,33 @@ final class GameViewModel: ObservableObject {
         }
 
         return max(delay, 0)
+    }
+
+    /// UI tests can provide a deterministic starting evaluation without
+    /// depending on live Stockfish search output.
+    private static var initialEvaluation: ChessEvaluation {
+        let environment = ProcessInfo.processInfo.environment
+        guard let value = environment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION"] else {
+            return .unavailable
+        }
+
+        let parts = value.split(separator: ":").map(String.init)
+        if parts.count == 2, parts[0] == "cp", let centipawns = Int(parts[1]) {
+            return .centipawns(centipawns)
+        }
+
+        if parts.count == 3, parts[0] == "mate", let moves = Int(parts[2]) {
+            switch parts[1] {
+            case "white":
+                return .mate(moves: moves, side: .white)
+            case "black":
+                return .mate(moves: moves, side: .black)
+            default:
+                return .unavailable
+            }
+        }
+
+        return .unavailable
     }
 
     /// UI tests use scripted opponent replies so interaction tests are not
@@ -168,6 +201,11 @@ final class GameViewModel: ObservableObject {
     /// Updates whether the visible move list reference component is shown.
     func setMoveListVisible(_ showsMoveList: Bool) {
         self.showsMoveList = showsMoveList
+    }
+
+    /// Updates whether the visible evaluation bar reference component is shown.
+    func setEvaluationBarVisible(_ showsEvaluationBar: Bool) {
+        self.showsEvaluationBar = showsEvaluationBar
     }
 
     /// Selects a move-list record without changing the board position.
@@ -274,6 +312,7 @@ final class GameViewModel: ObservableObject {
         // Restore ChessCore's full game history for status, repetition, and draw-claim APIs.
         boardModel.game = updatedGame
         refreshGameSnapshot(from: updatedGame)
+        evaluation = .unavailable
         return true
     }
 
@@ -308,19 +347,25 @@ final class GameViewModel: ObservableObject {
 
         // Convert the current ChessCore position into a FEN string.
         let fen = fenSerializer.fen(from: boardModel.game.position)
+        let searchSideToMove = boardModel.game.position.state.turn
         // Rotate the token so old "bestmove" lines are ignored.
         let token = UUID()
         searchToken = token
         engineTimeoutTask?.cancel()
 
-        // Create a new engine instance with a simple line callback.
+        let parser = UCIParser()
+        // Create a new engine instance with a line callback that parses UCI output.
         let engine = SFEngine(lineHandler: { [weak self] line in
-            // Stockfish streams many lines; we only care about bestmove.
-            guard let self, line.hasPrefix("bestmove") else { return }
-            let move = GameViewModel.parseBestMove(line)
+            let parsedLine = parser.parse(line)
             // Bounce back to the main actor because we will update UI state.
             Task { @MainActor in
-                self.receiveEngineMove(move: move, token: token, engine: self.engine)
+                guard let self else { return }
+                self.receiveEngineOutput(
+                    parsedLine,
+                    searchSideToMove: searchSideToMove,
+                    token: token,
+                    engine: self.engine
+                )
             }
         })
 
@@ -328,15 +373,15 @@ final class GameViewModel: ObservableObject {
         // Start the Stockfish process and initiate the UCI protocol.
         engine.start()
         // Standard UCI handshake followed by a depth-limited search.
-        engine.sendCommand("uci")
+        engine.sendCommand(UCICommand.uci.string)
         // Ask Stockfish to confirm it is ready for commands.
-        engine.sendCommand("isready")
+        engine.sendCommand(UCICommand.isReady.string)
         // Reset internal engine state so the search is clean.
-        engine.sendCommand("ucinewgame")
+        engine.sendCommand(UCICommand.newGame.string)
         // Provide the current position in FEN.
-        engine.sendCommand("position fen \(fen)")
+        engine.sendCommand(UCICommand.position(.fen(fen)).string)
         // Launch the search at the chosen depth.
-        engine.sendCommand("go depth \(engineDepth)")
+        engine.sendCommand(UCICommand.go(.depth(engineDepth)).string)
 
         // Guard against engine hangs by timing out after 30 seconds.
         engineTimeoutTask = Task { [weak self] in
@@ -377,8 +422,31 @@ final class GameViewModel: ObservableObject {
         _ = checkForGameEnd()
     }
 
-    /// Handles the engine move after receiving a "bestmove" line.
-    private func receiveEngineMove(move: String?, token: UUID, engine: SFEngine?) {
+    /// Handles parsed UCI output from the current engine search.
+    private func receiveEngineOutput(
+        _ output: UCIParsedLine,
+        searchSideToMove: PieceColor,
+        token: UUID,
+        engine: SFEngine?
+    ) {
+        guard token == searchToken else { return }
+
+        switch output {
+        case .info(let info):
+            if let score = info.whiteRelativeScore(sideToMove: searchSideToMove) {
+                evaluation = chessEvaluation(from: score)
+            }
+
+        case .bestMove(let bestMove):
+            receiveEngineMove(move: bestMove.move, token: token, engine: engine)
+
+        case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
+            return
+        }
+    }
+
+    /// Handles the engine move after receiving a parsed `bestmove` line.
+    private func receiveEngineMove(move: Move?, token: UUID, engine: SFEngine?) {
         // Ignore stale responses from previous searches.
         guard token == searchToken else { return }
 
@@ -390,24 +458,17 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        // Normalize promotion format before creating the ChessCore move.
-        let normalized = normalizePromotion(move)
         // Stop the engine before applying the move to the UI.
         finishEngineSearch(engine: engine)
-        // Convert the UCI string into a ChessCore move and apply it.
-        do {
-            let engineMove = try Move(string: normalized)
-            guard applyMove(
-                move: engineMove,
-                failureTitle: "Engine Error",
-                failureMessage: "Stockfish returned an illegal move."
-            ) else {
-                return
-            }
-        } catch {
-            endGame(title: "Engine Error", message: "Stockfish returned an invalid move.")
+
+        guard applyMove(
+            move: move,
+            failureTitle: "Engine Error",
+            failureMessage: "Stockfish returned an illegal move."
+        ) else {
             return
         }
+
         // Check if the engine's move ended the game.
         _ = checkForGameEnd()
     }
@@ -506,6 +567,16 @@ final class GameViewModel: ObservableObject {
         sideToMove = game.position.state.turn
     }
 
+    /// Maps reusable ChessUCI score data into ChessUI's display model.
+    private func chessEvaluation(from score: UCIWhiteScore) -> ChessEvaluation {
+        switch score {
+        case .centipawns(let centipawns):
+            return .centipawns(centipawns)
+        case .mate(let moves, let side):
+            return .mate(moves: moves, side: side)
+        }
+    }
+
     /// User-facing alert title for a terminal draw.
     private func drawTitle(for reason: GameDrawReason) -> String {
         switch reason {
@@ -526,23 +597,4 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Normalizes promotion piece casing before parsing engine output.
-    private func normalizePromotion(_ move: String) -> String {
-        // UCI promotion moves are 5 characters (e7e8q).
-        guard move.count == 5 else { return move }
-        let prefix = move.prefix(4)
-        // Keep promotion letters consistent with the rest of the demo.
-        let suffix = move.suffix(1).uppercased()
-        return "\(prefix)\(suffix)"
-    }
-
-    /// Extracts the coordinate move from a UCI "bestmove" line.
-    private static func parseBestMove(_ line: String) -> String? {
-        // "bestmove e2e4" -> ["bestmove", "e2e4", ...]
-        let parts = line.split(separator: " ")
-        guard parts.count >= 2 else { return nil }
-        let move = String(parts[1])
-        // Stockfish returns "(none)" when no legal move exists.
-        return move == "(none)" ? nil : move
-    }
 }

@@ -2,7 +2,8 @@
 
 ## Project Structure & Module Organization
 - `SwiftChessDemo/`: SwiftUI app entry point, views, and view models.
-- `../SwiftChessTools/`: local Swift package dependency that provides `ChessCore` and `ChessUI`.
+- `../SwiftChessTools/`: local Swift package dependency that provides
+  `ChessCore`, `ChessUI`, and `ChessUCI` command/parser helpers.
 - `../StockfishEmbedded/`: local Xcode project dependency that provides `SFEngine-iOS`.
 - `SwiftChessDemo.xcodeproj/`: Xcode project; assets live in `SwiftChessDemo/Assets.xcassets`.
 

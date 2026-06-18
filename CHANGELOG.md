@@ -18,8 +18,11 @@ for a release.
 - Added a visible in-game status display backed by `ChessGameStatusView`.
 - Added a visible in-game move list backed by `ChessMoveListView` and
   `ChessMoveRecord`.
+- Added optional in-game evaluation display backed by `ChessEvaluationBar` and
+  parsed Stockfish `info score` output.
 - Added in-game display toggles for showing or hiding the status display and
   move list.
+- Added an in-game display toggle for showing or hiding the evaluation bar.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI piece set is
   selectable during a game.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI board theme is
@@ -27,6 +30,8 @@ for a release.
 - Added SwiftChessDemo UI coverage for the in-game coordinate-label toggle.
 - Added SwiftChessDemo UI coverage for status display, move-list updates, and
   the new display toggles.
+- Added SwiftChessDemo UI coverage for deterministic evaluation-bar rendering
+  and toggling.
 - Added SwiftChessDemo UI tests that exercise four full moves from both white
   and black perspectives, using a test-only scripted engine path for
   deterministic opponent replies.
@@ -47,6 +52,11 @@ for a release.
   `ChessGameStatusView` instead of being claimed automatically.
 - Changed the compact game layout to show the move list as a horizontal strip
   above the board, while regular-width layouts keep the side-panel move list.
+- Changed engine-output handling to use SwiftChessTools' `ChessUCI` parser for
+  Stockfish `info` and `bestmove` lines instead of local string splitting.
+- Changed engine-input handling to use SwiftChessTools' `ChessUCI` command
+  formatter for Stockfish handshake, position, and search commands instead of
+  hand-built UCI strings.
 
 ### Fixed
 

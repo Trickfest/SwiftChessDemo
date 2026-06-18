@@ -11,6 +11,7 @@
 		C0D10000000000000000000C /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = C0D10000000000000000000D /* ChessUI */; };
 		D4D200000000000000000001 /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000004 /* ChessCore */; };
 		D4D200000000000000000002 /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000005 /* ChessUI */; };
+		D4D200000000000000000007 /* ChessUCI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000006 /* ChessUCI */; };
 	/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +65,7 @@
 				013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */,
 				D4D200000000000000000001 /* ChessCore in Frameworks */,
 				D4D200000000000000000002 /* ChessUI in Frameworks */,
+				D4D200000000000000000007 /* ChessUCI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,6 +155,7 @@
 			packageProductDependencies = (
 				D4D200000000000000000004 /* ChessCore */,
 				D4D200000000000000000005 /* ChessUI */,
+				D4D200000000000000000006 /* ChessUCI */,
 			);
 			productName = SwiftChessDemo;
 			productReference = BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */;
@@ -301,6 +304,10 @@
 		D4D200000000000000000005 /* ChessUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ChessUI;
+		};
+		D4D200000000000000000006 /* ChessUCI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChessUCI;
 		};
 		C0D10000000000000000000D /* ChessUI */ = {
 			isa = XCSwiftPackageProductDependency;

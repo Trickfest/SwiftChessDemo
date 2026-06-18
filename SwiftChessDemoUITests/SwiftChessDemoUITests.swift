@@ -274,6 +274,38 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
     }
 
+    func testGameEvaluationBarRendersAndToggles() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION"] = "cp:85"
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let evaluationBar = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "evaluation bar"
+        )
+        XCTAssertEqual(evaluationBar.value as? String, "White advantage 0.9 pawns")
+
+        let evaluationToggle = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.evaluationToggle"].firstMatch,
+            named: "evaluation toggle",
+            in: app
+        )
+        try waitForElementValue(evaluationToggle, expectedValue: "Shown", named: "evaluation toggle")
+
+        evaluationToggle.tap()
+        try waitForElementValue(evaluationToggle, expectedValue: "Hidden", named: "evaluation toggle")
+        XCTAssertFalse(app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch.exists)
+
+        evaluationToggle.tap()
+        try waitForElementValue(evaluationToggle, expectedValue: "Shown", named: "evaluation toggle")
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "restored evaluation bar"
+        )
+    }
+
     @discardableResult
     private func scrollUntilHittable(
         _ element: XCUIElement,
@@ -283,7 +315,7 @@ final class SwiftChessDemoUITests: XCTestCase {
         line: UInt = #line
     ) throws -> XCUIElement {
         let deadline = Date().addingTimeInterval(5)
-        let scrollView = app.scrollViews.firstMatch
+        let scrollView = app.scrollViews["Game.scrollView"].firstMatch
 
         repeat {
             if element.exists, element.isHittable {

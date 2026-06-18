@@ -20,6 +20,8 @@ struct GameView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Owns the game logic and engine integration for this screen.
     @StateObject private var viewModel: GameViewModel
+    /// Last measured board side length, used to size adjacent reference UI.
+    @State private var boardSideLength: CGFloat = 320
 
     /// Creates the view model with the chosen side, engine depth, and board styling.
     init(playerColor: PieceColor, engineDepth: Int, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
@@ -38,6 +40,7 @@ struct GameView: View {
             gameLayout
                 .padding()
         }
+        .accessibilityIdentifier("Game.scrollView")
         .navigationTitle("Game")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -121,28 +124,82 @@ struct GameView: View {
                 compactMoveListStrip
             }
 
-            // ChessUI view; delivers user moves via the onMove callback.
-            ChessBoardView(model: viewModel.boardModel)
-                .onMove { attempt in
-                    viewModel.handleUserMove(move: attempt.move, isLegal: attempt.isLegal)
-                }
-                .aspectRatio(1, contentMode: .fit)
-                .overlay(alignment: .topLeading) {
-                    // Separate state marker keeps board assertions independent
-                    // from visual board rendering.
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Game board")
-                        .accessibilityIdentifier("Game.boardState")
-                        .accessibilityValue(boardAccessibilityValue)
-                        .allowsHitTesting(false)
-                }
+            boardWithEvaluation
 
             if viewModel.showsUITestMoveControls {
                 uiTestMoveControls
             }
         }
+    }
+
+    @ViewBuilder
+    private var boardWithEvaluation: some View {
+        if horizontalSizeClass == .regular {
+            HStack(alignment: .top, spacing: 10) {
+                if viewModel.showsEvaluationBar {
+                    verticalEvaluationBar
+                }
+
+                boardView
+            }
+        } else {
+            VStack(spacing: 8) {
+                if viewModel.showsEvaluationBar {
+                    horizontalEvaluationBar
+                }
+
+                boardView
+            }
+        }
+    }
+
+    private var boardView: some View {
+        // ChessUI view; delivers user moves via the onMove callback.
+        ChessBoardView(model: viewModel.boardModel)
+            .onMove { attempt in
+                viewModel.handleUserMove(move: attempt.move, isLegal: attempt.isLegal)
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .overlay(alignment: .topLeading) {
+                // Separate state marker keeps board assertions independent
+                // from visual board rendering.
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Game board")
+                    .accessibilityIdentifier("Game.boardState")
+                    .accessibilityValue(boardAccessibilityValue)
+                    .allowsHitTesting(false)
+            }
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: BoardSideLengthPreferenceKey.self,
+                        value: geometry.size.height
+                    )
+                }
+            }
+            .onPreferenceChange(BoardSideLengthPreferenceKey.self) { sideLength in
+                boardSideLength = sideLength
+            }
+    }
+
+    private var verticalEvaluationBar: some View {
+        ChessEvaluationBar(
+            evaluation: viewModel.evaluation,
+            orientation: .vertical,
+            whiteSide: viewModel.playerColor == .white ? .bottom : .top
+        )
+        .frame(width: 28, height: max(boardSideLength, 120))
+    }
+
+    private var horizontalEvaluationBar: some View {
+        ChessEvaluationBar(
+            evaluation: viewModel.evaluation,
+            orientation: .horizontal,
+            whiteSide: .leading
+        )
+        .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
     }
 
     private var boardAccessibilityValue: String {
@@ -183,6 +240,7 @@ struct GameView: View {
                     coordinateLabelsToggle
                     gameStatusToggle
                     moveListToggle
+                    evaluationBarToggle
                 }
             } else {
                 compactDisplayOptions
@@ -198,9 +256,15 @@ struct GameView: View {
             }
 
             VStack(spacing: 8) {
-                coordinateLabelsToggle
-                gameStatusToggle
-                moveListToggle
+                HStack(spacing: 10) {
+                    coordinateLabelsToggle
+                    gameStatusToggle
+                }
+
+                HStack(spacing: 10) {
+                    moveListToggle
+                    evaluationBarToggle
+                }
             }
         }
     }
@@ -329,6 +393,17 @@ struct GameView: View {
         }
     }
 
+    private var evaluationBarToggle: some View {
+        displayToggleRow(
+            title: "Evaluation",
+            systemImage: "chart.bar.fill",
+            isOn: viewModel.showsEvaluationBar,
+            accessibilityIdentifier: "Game.evaluationToggle"
+        ) {
+            viewModel.setEvaluationBarVisible(!viewModel.showsEvaluationBar)
+        }
+    }
+
     private var uiTestMoveControls: some View {
         VStack(spacing: 6) {
             Text(viewModel.positionFEN)
@@ -384,22 +459,36 @@ struct GameView: View {
             HStack(spacing: 8) {
                 Label(title, systemImage: systemImage)
                     .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
 
-                Toggle(title, isOn: .constant(isOn))
-                    .labelsHidden()
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                toggleIndicator(isOn: isOn)
             }
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier(accessibilityIdentifier)
         .accessibilityLabel(title)
         .accessibilityValue(isOn ? "Shown" : "Hidden")
+        .frame(maxWidth: .infinity)
+    }
+
+    private func toggleIndicator(isOn: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 11)
+            .fill(isOn ? Color.accentColor.opacity(0.28) : Color.secondary.opacity(0.18))
+            .frame(width: 38, height: 22)
+            .overlay(alignment: isOn ? .trailing : .leading) {
+                Circle()
+                    .fill(isOn ? Color.accentColor : Color.secondary)
+                    .frame(width: 18, height: 18)
+                    .padding(2)
+            }
+            .accessibilityHidden(true)
     }
 
     private func panelSection<Content: View>(
@@ -418,5 +507,13 @@ struct GameView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.08))
         }
+    }
+}
+
+private struct BoardSideLengthPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 320
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
