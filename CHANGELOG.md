@@ -13,10 +13,13 @@ for a release.
   `ChessPieceSet.availableSets`, defaulting the demo to Art Deco Monochrome.
 - Added visible in-game board theme selectors backed by
   `ChessBoardTheme.availableThemes`, defaulting the demo to Art Deco Monochrome.
+- Added an in-game `Coordinates` switch for showing or hiding ChessUI rank and
+  file coordinate labels.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI piece set is
   selectable during a game.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI board theme is
   selectable during a game.
+- Added SwiftChessDemo UI coverage for the in-game coordinate-label toggle.
 - Added SwiftChessDemo UI tests that exercise four full moves from both white
   and black perspectives, using a test-only scripted engine path for
   deterministic opponent replies.

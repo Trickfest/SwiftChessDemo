@@ -56,6 +56,12 @@ final class GameViewModel: ObservableObject {
             boardModel.boardTheme = boardTheme
         }
     }
+    /// Controls whether ChessUI renders rank and file coordinate labels.
+    @Published var showsCoordinateLabels = true {
+        didSet {
+            boardModel.showsCoordinateLabels = showsCoordinateLabels
+        }
+    }
     /// Current FEN exposed to UI tests for black-box board-change assertions.
     @Published private(set) var positionFEN: String
 
@@ -131,6 +137,11 @@ final class GameViewModel: ObservableObject {
     /// Test-only controls are opt-in through the UI test launch environment.
     var showsUITestMoveControls: Bool {
         Self.usesScriptedUITestEngine
+    }
+
+    /// Updates whether ChessUI draws rank and file coordinate labels.
+    func setCoordinateLabelsVisible(_ showsCoordinateLabels: Bool) {
+        self.showsCoordinateLabels = showsCoordinateLabels
     }
 
     /// Starts the game loop on first appearance.

@@ -16,6 +16,8 @@ import ChessUI
 struct GameView: View {
     /// Used to dismiss back to the configuration screen.
     @Environment(\.dismiss) private var dismiss
+    /// Chooses a compact or regular display-controls layout without duplicating controls.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Owns the game logic and engine integration for this screen.
     @StateObject private var viewModel: GameViewModel
 
@@ -47,9 +49,7 @@ struct GameView: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Game board")
                         .accessibilityIdentifier("Game.boardState")
-                        .accessibilityValue(
-                            "Pieces: \(viewModel.pieceSet.displayName), Board: \(viewModel.boardTheme.displayName), FEN: \(viewModel.positionFEN)"
-                        )
+                        .accessibilityValue(boardAccessibilityValue)
                         .allowsHitTesting(false)
                 }
                 .padding()
@@ -109,42 +109,106 @@ struct GameView: View {
         }
     }
 
-    private var displayControls: some View {
-        HStack(spacing: 12) {
-            Menu {
-                Picker("Pieces", selection: $viewModel.pieceSet) {
-                    ForEach(ChessPieceSet.availableSets) { pieceSet in
-                        Text(pieceSet.displayName).tag(pieceSet)
-                    }
-                }
-            } label: {
-                displayControlLabel(
-                    title: "Pieces",
-                    value: viewModel.pieceSet.displayName,
-                    systemImage: "square.grid.3x3"
-                )
-            }
-            .accessibilityIdentifier("Game.pieceSetPicker")
-            .accessibilityValue(viewModel.pieceSet.displayName)
+    private var boardAccessibilityValue: String {
+        let coordinateState = viewModel.showsCoordinateLabels ? "Shown" : "Hidden"
 
-            Menu {
-                Picker("Board", selection: $viewModel.boardTheme) {
-                    ForEach(ChessBoardTheme.availableThemes) { boardTheme in
-                        Text(boardTheme.displayName).tag(boardTheme)
-                    }
-                }
-            } label: {
-                displayControlLabel(
-                    title: "Board",
-                    value: viewModel.boardTheme.displayName,
-                    systemImage: "square.grid.2x2"
-                )
+        return "Pieces: \(viewModel.pieceSet.displayName), "
+            + "Board: \(viewModel.boardTheme.displayName), "
+            + "Coordinates: \(coordinateState), "
+            + "FEN: \(viewModel.positionFEN)"
+    }
+
+    private var displayControls: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                regularDisplayControls
+            } else {
+                compactDisplayControls
             }
-            .accessibilityIdentifier("Game.boardThemePicker")
-            .accessibilityValue(viewModel.boardTheme.displayName)
         }
-        .buttonStyle(.bordered)
         .padding(.horizontal)
+    }
+
+    private var regularDisplayControls: some View {
+        HStack(spacing: 12) {
+            pieceSetControl
+            boardThemeControl
+            coordinateLabelsToggle
+        }
+    }
+
+    private var compactDisplayControls: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 12) {
+                pieceSetControl
+                boardThemeControl
+            }
+
+            coordinateLabelsToggle
+        }
+    }
+
+    private var pieceSetControl: some View {
+        Menu {
+            Picker("Pieces", selection: $viewModel.pieceSet) {
+                ForEach(ChessPieceSet.availableSets) { pieceSet in
+                    Text(pieceSet.displayName).tag(pieceSet)
+                }
+            }
+        } label: {
+            displayControlLabel(
+                title: "Pieces",
+                value: viewModel.pieceSet.displayName,
+                systemImage: "square.grid.3x3"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.pieceSetPicker")
+        .accessibilityValue(viewModel.pieceSet.displayName)
+    }
+
+    private var boardThemeControl: some View {
+        Menu {
+            Picker("Board", selection: $viewModel.boardTheme) {
+                ForEach(ChessBoardTheme.availableThemes) { boardTheme in
+                    Text(boardTheme.displayName).tag(boardTheme)
+                }
+            }
+        } label: {
+            displayControlLabel(
+                title: "Board",
+                value: viewModel.boardTheme.displayName,
+                systemImage: "square.grid.2x2"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.boardThemePicker")
+        .accessibilityValue(viewModel.boardTheme.displayName)
+    }
+
+    private var coordinateLabelsToggle: some View {
+        Button {
+            viewModel.setCoordinateLabelsVisible(!viewModel.showsCoordinateLabels)
+        } label: {
+            HStack(spacing: 8) {
+                Label("Coordinates", systemImage: "number.square")
+                    .font(.caption)
+
+                Spacer(minLength: 12)
+
+                Toggle("Coordinates", isOn: .constant(viewModel.showsCoordinateLabels))
+                    .labelsHidden()
+                    .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("Game.coordinateLabelsToggle")
+        .accessibilityLabel("Coordinates")
+        .accessibilityValue(viewModel.showsCoordinateLabels ? "Shown" : "Hidden")
     }
 
     private var uiTestMoveControls: some View {

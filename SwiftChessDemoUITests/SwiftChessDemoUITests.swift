@@ -160,6 +160,29 @@ final class SwiftChessDemoUITests: XCTestCase {
         }
     }
 
+    func testGameCoordinateLabelsToggleUpdatesBoardState() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let toggle = try requireElement(
+            app.descendants(matching: .any)["Game.coordinateLabelsToggle"].firstMatch,
+            named: "coordinate labels toggle"
+        )
+        let boardValue = try boardValue(in: app)
+        XCTAssertTrue(boardValue.contains("Coordinates: Shown"))
+
+        toggle.tap()
+
+        let hiddenValue = try waitForBoardValue(
+            containing: "Coordinates: Hidden",
+            in: app,
+            named: "coordinate labels hidden"
+        )
+        XCTAssertTrue(hiddenValue.contains("Coordinates: Hidden"))
+    }
+
     private func moveSmokeTestApplication() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
@@ -205,6 +228,31 @@ final class SwiftChessDemoUITests: XCTestCase {
         } while Date() < deadline
 
         let message = "Board value did not change to \(turn.token.trimmingCharacters(in: .whitespaces)) after \(changeName)"
+        XCTFail(message, file: file, line: line)
+        throw UITestFailure(description: message)
+    }
+
+    private func waitForBoardValue(
+        containing expectedValue: String,
+        in app: XCUIApplication,
+        named changeName: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastValue = ""
+
+        repeat {
+            lastValue = try boardValue(in: app, file: file, line: line)
+            if lastValue.contains(expectedValue) {
+                return lastValue
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        let message = "Board value did not contain \(expectedValue) after \(changeName). Last value: \(lastValue)"
         XCTFail(message, file: file, line: line)
         throw UITestFailure(description: message)
     }

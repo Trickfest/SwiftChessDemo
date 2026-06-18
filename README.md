@@ -22,7 +22,8 @@ curl -L --fail https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue -o .
 How it all fits together:
 - `ChessUI` renders the board UI and emits user move gestures.
 - `ChessUI` also supplies runtime lists of bundled chess piece sets and board
-  themes used by the in-game display selectors.
+  themes used by the in-game display selectors, plus coordinate-label
+  visibility for the in-game `Coordinates` switch.
 - `ChessCore` owns the rules engine, legal move generation, and game state.
 - The sibling `../StockfishEmbedded` project supplies engine moves over the UCI protocol via `SFEngine`.
 
@@ -37,13 +38,13 @@ Data flow at a glance:
 
 Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for side and engine depth.
-- `SwiftChessDemo/GameView.swift`: board UI, live piece-set and board-theme
-  switching during play, and navigation flow.
+- `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme, and
+  coordinate-label switching during play, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, engine coordination, safe
   move application, and ChessCore game-status integration.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
-  in-game piece-set selection, board-theme selection, and four-full-move game
-  flows from both white and black perspectives.
+  in-game piece-set selection, board-theme selection, coordinate-label toggling,
+  and four-full-move game flows from both white and black perspectives.
 
 Automated UI tests:
 - Run the suite with `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`.
