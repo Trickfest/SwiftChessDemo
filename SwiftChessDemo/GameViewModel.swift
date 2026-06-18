@@ -158,6 +158,19 @@ final class GameViewModel: ObservableObject {
             return .unavailable
         }
 
+        return evaluation(fromEnvironmentValue: value) ?? .unavailable
+    }
+
+    /// UI tests can simulate an engine `info score` update before a scripted best move is applied.
+    private static var scriptedEvaluationBeforeEngineReply: ChessEvaluation? {
+        guard let value = ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_EVALUATION_BEFORE_REPLY"] else {
+            return nil
+        }
+
+        return evaluation(fromEnvironmentValue: value)
+    }
+
+    private static func evaluation(fromEnvironmentValue value: String) -> ChessEvaluation? {
         let parts = value.split(separator: ":").map(String.init)
         if parts.count == 2, parts[0] == "cp", let centipawns = Int(parts[1]) {
             return .centipawns(centipawns)
@@ -170,11 +183,11 @@ final class GameViewModel: ObservableObject {
             case "black":
                 return .mate(moves: moves, side: .black)
             default:
-                return .unavailable
+                return nil
             }
         }
 
-        return .unavailable
+        return nil
     }
 
     /// UI tests use scripted opponent replies so interaction tests are not
@@ -312,7 +325,6 @@ final class GameViewModel: ObservableObject {
         // Restore ChessCore's full game history for status, repetition, and draw-claim APIs.
         boardModel.game = updatedGame
         refreshGameSnapshot(from: updatedGame)
-        evaluation = .unavailable
         return true
     }
 
@@ -416,6 +428,10 @@ final class GameViewModel: ObservableObject {
         guard let move else {
             endGame(title: "Draw", message: "No legal moves remain.")
             return
+        }
+
+        if let scriptedEvaluation = Self.scriptedEvaluationBeforeEngineReply {
+            evaluation = scriptedEvaluation
         }
 
         guard applyMove(move: move) else { return }

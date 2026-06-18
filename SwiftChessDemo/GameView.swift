@@ -20,8 +20,15 @@ struct GameView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     /// Owns the game logic and engine integration for this screen.
     @StateObject private var viewModel: GameViewModel
-    /// Last measured board side length, used to size adjacent reference UI.
-    @State private var boardSideLength: CGFloat = 320
+    /// Last measured board area width, used to keep the board and evaluation bar in sync.
+    @State private var boardContainerWidth: CGFloat = 320
+
+    private static let regularMaxBoardAreaWidth: CGFloat = 720
+    private static let compactMaxBoardAreaWidth: CGFloat = 620
+    private static let verticalEvaluationBarWidth: CGFloat = 28
+    private static let horizontalEvaluationBarHeight: CGFloat = 26
+    private static let regularEvaluationSpacing: CGFloat = 10
+    private static let compactEvaluationSpacing: CGFloat = 8
 
     /// Creates the view model with the chosen side, engine depth, and board styling.
     init(playerColor: PieceColor, engineDepth: Int, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
@@ -96,7 +103,7 @@ struct GameView: View {
     private var regularGameLayout: some View {
         HStack(alignment: .top, spacing: 24) {
             boardArea
-                .frame(maxWidth: 720)
+                .frame(maxWidth: Self.regularMaxBoardAreaWidth)
 
             referencePanel
                 .frame(width: 360)
@@ -110,7 +117,7 @@ struct GameView: View {
             boardArea
             referencePanel
         }
-        .frame(maxWidth: 620)
+        .frame(maxWidth: Self.compactMaxBoardAreaWidth)
         .frame(maxWidth: .infinity)
     }
 
@@ -134,23 +141,80 @@ struct GameView: View {
 
     @ViewBuilder
     private var boardWithEvaluation: some View {
+        GeometryReader { geometry in
+            let sideLength = resolvedBoardSideLength(for: geometry.size.width)
+
+            boardWithEvaluationContent(sideLength: sideLength)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .onAppear {
+                    updateBoardContainerWidth(geometry.size.width)
+                }
+                .onChange(of: geometry.size.width) { _, newWidth in
+                    updateBoardContainerWidth(newWidth)
+                }
+            }
+        .frame(height: boardWithEvaluationHeight)
+    }
+
+    @ViewBuilder
+    private func boardWithEvaluationContent(sideLength: CGFloat) -> some View {
         if horizontalSizeClass == .regular {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: viewModel.showsEvaluationBar ? Self.regularEvaluationSpacing : 0) {
                 if viewModel.showsEvaluationBar {
                     verticalEvaluationBar
+                        .frame(width: Self.verticalEvaluationBarWidth, height: sideLength)
                 }
 
                 boardView
+                    .frame(width: sideLength, height: sideLength)
             }
+            .frame(height: sideLength)
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: viewModel.showsEvaluationBar ? Self.compactEvaluationSpacing : 0) {
                 if viewModel.showsEvaluationBar {
                     horizontalEvaluationBar
+                        .frame(width: sideLength, height: Self.horizontalEvaluationBarHeight)
                 }
 
                 boardView
+                    .frame(width: sideLength, height: sideLength)
             }
         }
+    }
+
+    private var resolvedBoardSideLength: CGFloat {
+        resolvedBoardSideLength(for: boardContainerWidth)
+    }
+
+    private var boardWithEvaluationHeight: CGFloat {
+        let sideLength = resolvedBoardSideLength
+
+        if horizontalSizeClass == .regular {
+            return sideLength
+        }
+
+        let evaluationHeight = viewModel.showsEvaluationBar
+            ? Self.horizontalEvaluationBarHeight + Self.compactEvaluationSpacing
+            : 0
+        return sideLength + evaluationHeight
+    }
+
+    private func resolvedBoardSideLength(for width: CGFloat) -> CGFloat {
+        let availableWidth = max(width, 1)
+
+        if horizontalSizeClass == .regular {
+            let reservedWidth = viewModel.showsEvaluationBar
+                ? Self.verticalEvaluationBarWidth + Self.regularEvaluationSpacing
+                : 0
+            return max(1, min(Self.regularMaxBoardAreaWidth - reservedWidth, availableWidth - reservedWidth))
+        }
+
+        return max(1, min(Self.compactMaxBoardAreaWidth, availableWidth))
+    }
+
+    private func updateBoardContainerWidth(_ width: CGFloat) {
+        guard width > 0, abs(width - boardContainerWidth) > 0.5 else { return }
+        boardContainerWidth = width
     }
 
     private var boardView: some View {
@@ -164,23 +228,11 @@ struct GameView: View {
                 // Separate state marker keeps board assertions independent
                 // from visual board rendering.
                 Color.clear
-                    .frame(width: 1, height: 1)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Game board")
                     .accessibilityIdentifier("Game.boardState")
                     .accessibilityValue(boardAccessibilityValue)
                     .allowsHitTesting(false)
-            }
-            .background {
-                GeometryReader { geometry in
-                    Color.clear.preference(
-                        key: BoardSideLengthPreferenceKey.self,
-                        value: geometry.size.height
-                    )
-                }
-            }
-            .onPreferenceChange(BoardSideLengthPreferenceKey.self) { sideLength in
-                boardSideLength = sideLength
             }
     }
 
@@ -190,7 +242,6 @@ struct GameView: View {
             orientation: .vertical,
             whiteSide: viewModel.playerColor == .white ? .bottom : .top
         )
-        .frame(width: 28, height: max(boardSideLength, 120))
     }
 
     private var horizontalEvaluationBar: some View {
@@ -199,7 +250,6 @@ struct GameView: View {
             orientation: .horizontal,
             whiteSide: .leading
         )
-        .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
     }
 
     private var boardAccessibilityValue: String {
@@ -507,13 +557,5 @@ struct GameView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.08))
         }
-    }
-}
-
-private struct BoardSideLengthPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 320
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }

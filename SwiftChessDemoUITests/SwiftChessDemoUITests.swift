@@ -287,6 +287,12 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
         XCTAssertEqual(evaluationBar.value as? String, "White advantage 0.9 pawns")
 
+        let board = try requireElement(
+            app.descendants(matching: .any)["Game.boardState"].firstMatch,
+            named: "game board state"
+        )
+        assertEvaluationBarMatchesBoard(evaluationBar, board: board)
+
         let evaluationToggle = try scrollUntilHittable(
             app.descendants(matching: .any)["Game.evaluationToggle"].firstMatch,
             named: "evaluation toggle",
@@ -303,6 +309,42 @@ final class SwiftChessDemoUITests: XCTestCase {
         try requireElement(
             app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
             named: "restored evaluation bar"
+        )
+    }
+
+    func testGameEvaluationBarKeepsLatestEngineScoreAfterReply() throws {
+        let app = moveSmokeTestApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_EVALUATION_BEFORE_REPLY"] = "cp:-220"
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let evaluationBar = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "evaluation bar"
+        )
+        XCTAssertEqual(evaluationBar.value as? String, "Evaluation unavailable")
+
+        let initialPosition = try boardValue(in: app)
+        try tapMove("e2e4", in: app)
+        let afterWhiteMove = try waitForBoardTurn(
+            .black,
+            from: initialPosition,
+            in: app,
+            named: "White opening move"
+        )
+
+        _ = try waitForBoardTurn(
+            .white,
+            from: afterWhiteMove,
+            in: app,
+            named: "Black scripted reply"
+        )
+        try waitForElementValue(
+            evaluationBar,
+            expectedValue: "Black advantage 2.2 pawns",
+            named: "evaluation after scripted engine reply",
+            timeout: 5
         )
     }
 
@@ -356,6 +398,19 @@ final class SwiftChessDemoUITests: XCTestCase {
         } while Date() < deadline
 
         XCTAssertEqual(lastValue, expectedValue, "\(name) value", file: file, line: line)
+    }
+
+    private func assertEvaluationBarMatchesBoard(
+        _ evaluationBar: XCUIElement,
+        board: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if evaluationBar.frame.height > evaluationBar.frame.width {
+            XCTAssertEqual(evaluationBar.frame.height, board.frame.height, accuracy: 2, file: file, line: line)
+        } else {
+            XCTAssertEqual(evaluationBar.frame.width, board.frame.width, accuracy: 2, file: file, line: line)
+        }
     }
 
     private func moveSmokeTestApplication() -> XCUIApplication {
