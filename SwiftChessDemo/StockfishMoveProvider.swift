@@ -1,0 +1,199 @@
+//
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+//
+// See THIRD_PARTY.md for dependency attribution and license details.
+//
+// Licensed under the GNU General Public License v3.0.
+// You may obtain a copy of the License at: https://www.gnu.org/licenses/gpl-3.0.html
+// See the LICENSE file for more information.
+//
+
+import Foundation
+import ChessCore
+import ChessUCI
+
+/// Distinguishes engine searches that should apply a move from analysis
+/// searches that only produce board arrows.
+enum StockfishSearchPurpose: Equatable, Sendable {
+    case opponentMove
+    case suggestions
+}
+
+/// One Stockfish request against one board position.
+struct StockfishSearchRequest: Equatable, Sendable {
+    let purpose: StockfishSearchPurpose
+    let fen: String
+    let sideToMove: PieceColor
+    let depth: Int
+    let multiPVCount: Int
+}
+
+/// Typed output from the Stockfish provider.
+enum StockfishMoveProviderEvent: Equatable, Sendable {
+    case output(UCIParsedLine, request: StockfishSearchRequest)
+    case timeout(StockfishSearchRequest)
+}
+
+/// Owns the embedded Stockfish process and UCI search lifecycle.
+///
+/// The game view model decides what engine output means for the app. This
+/// provider only serializes searches, sends UCI commands, parses engine lines,
+/// suppresses cancelled suggestion output, and reports typed events.
+@MainActor
+final class StockfishMoveProvider {
+    typealias EventHandler = @MainActor (StockfishMoveProviderEvent) -> Void
+
+    private let eventHandler: EventHandler
+    private var engine: SFEngine?
+    private var activeRequest: StockfishSearchRequest?
+    private var queuedSearchRequest: StockfishSearchRequest?
+    private var isIgnoringActiveSuggestionOutput = false
+    private var searchToken = UUID()
+    private var timeoutTask: Task<Void, Never>?
+
+    init(eventHandler: @escaping EventHandler) {
+        self.eventHandler = eventHandler
+    }
+
+    var activePurpose: StockfishSearchPurpose? {
+        activeRequest?.purpose
+    }
+
+    var activeFEN: String? {
+        activeRequest?.fen
+    }
+
+    func startOrQueueSearch(_ request: StockfishSearchRequest) {
+        guard let activeRequest else {
+            startSearch(request)
+            return
+        }
+
+        if activeRequest.purpose == .suggestions {
+            cancelSuggestionSearch(queueReplacement: request)
+        }
+    }
+
+    func cancelSuggestionSearch(queueReplacement: StockfishSearchRequest?) {
+        if activeRequest?.purpose == .suggestions {
+            queuedSearchRequest = queueReplacement
+            isIgnoringActiveSuggestionOutput = true
+            engine?.sendCommand(UCICommand.stop.string)
+        } else if let queueReplacement {
+            if activeRequest == nil {
+                startSearch(queueReplacement)
+            } else {
+                queuedSearchRequest = queueReplacement
+            }
+        }
+    }
+
+    func stop() {
+        searchToken = UUID()
+        activeRequest = nil
+        queuedSearchRequest = nil
+        isIgnoringActiveSuggestionOutput = false
+        timeoutTask?.cancel()
+        timeoutTask = nil
+
+        if let engine {
+            DispatchQueue.global(qos: .userInitiated).async {
+                engine.stop()
+            }
+        }
+        engine = nil
+    }
+
+    private func startSearch(_ request: StockfishSearchRequest) {
+        guard let engine = ensureEngineStarted() else { return }
+
+        activeRequest = request
+        queuedSearchRequest = nil
+        isIgnoringActiveSuggestionOutput = false
+        searchToken = UUID()
+        timeoutTask?.cancel()
+
+        engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
+        engine.sendCommand(UCICommand.isReady.string)
+        engine.sendCommand(UCICommand.newGame.string)
+        engine.sendCommand(UCICommand.position(.fen(request.fen)).string)
+        engine.sendCommand(UCICommand.go(.depth(request.depth)).string)
+
+        startTimeout(token: searchToken)
+    }
+
+    private func ensureEngineStarted() -> SFEngine? {
+        if let engine {
+            return engine
+        }
+
+        let parser = UCIParser()
+        let engine = SFEngine(lineHandler: { [weak self] line in
+            let parsedLine = parser.parse(line)
+            Task { @MainActor in
+                self?.receiveParsedLine(parsedLine)
+            }
+        })
+
+        self.engine = engine
+        engine.start()
+        engine.sendCommand(UCICommand.uci.string)
+        return engine
+    }
+
+    private func receiveParsedLine(_ output: UCIParsedLine) {
+        guard let request = activeRequest else { return }
+
+        if isIgnoringActiveSuggestionOutput, request.purpose == .suggestions {
+            if case .bestMove = output {
+                startQueuedSearchIfStillIdle(finishCurrentSearch())
+            }
+            return
+        }
+
+        if case .bestMove = output {
+            let queuedRequest = finishCurrentSearch()
+            eventHandler(.output(output, request: request))
+            startQueuedSearchIfStillIdle(queuedRequest)
+            return
+        }
+
+        eventHandler(.output(output, request: request))
+    }
+
+    private func startTimeout(token: UUID) {
+        timeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                return
+            }
+
+            self?.handleTimeout(token: token)
+        }
+    }
+
+    private func handleTimeout(token: UUID) {
+        guard token == searchToken, let request = activeRequest else { return }
+        let queuedRequest = finishCurrentSearch()
+        eventHandler(.timeout(request))
+        startQueuedSearchIfStillIdle(queuedRequest)
+    }
+
+    private func finishCurrentSearch() -> StockfishSearchRequest? {
+        activeRequest = nil
+        isIgnoringActiveSuggestionOutput = false
+        searchToken = UUID()
+        timeoutTask?.cancel()
+        timeoutTask = nil
+
+        let request = queuedSearchRequest
+        queuedSearchRequest = nil
+        return request
+    }
+
+    private func startQueuedSearchIfStillIdle(_ request: StockfishSearchRequest?) {
+        guard let request, activeRequest == nil, engine != nil else { return }
+        startSearch(request)
+    }
+}

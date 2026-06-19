@@ -18,7 +18,7 @@ import ChessUCI
 /// Teaching focus:
 /// - ChessCore handles rules, legal moves, and game state.
 /// - ChessUI renders the board and consumes FEN updates.
-/// - StockfishEmbedded (via `SFEngine`) supplies engine moves.
+/// - StockfishMoveProvider isolates StockfishEmbedded and UCI search lifecycle.
 final class GameViewModel: ObservableObject {
     /// Lightweight model for the end-of-game alert content.
     struct GameResult: Identifiable {
@@ -41,21 +41,6 @@ final class GameViewModel: ObservableObject {
                 return result.id.uuidString
             }
         }
-    }
-
-    /// Distinguishes engine searches that should apply a move from analysis
-    /// searches that only produce board arrows.
-    private enum EngineSearchPurpose {
-        case opponentMove
-        case suggestions
-    }
-
-    /// One engine request against one board position.
-    private struct EngineSearchRequest {
-        let purpose: EngineSearchPurpose
-        let fen: String
-        let sideToMove: PieceColor
-        let multiPVCount: Int
     }
 
     /// Drives alert presentation in the view.
@@ -110,42 +95,28 @@ final class GameViewModel: ObservableObject {
     private let fenSerializer = FENSerializer()
     /// Builds SAN-backed move-list records from pre-move game state.
     private let moveRecordBuilder = ChessMoveRecordBuilder()
-    /// The persistent Stockfish engine for this game screen.
-    private var engine: SFEngine?
     /// Optional deterministic move provider used for scenarios and scenario-backed UI tests.
     private let moveProvider: GameMoveProvider?
     /// Scenario being replayed, if this game was launched in scenario mode.
     private let scenario: GameScenario?
-    /// Task used to time out engine searches.
-    private var engineTimeoutTask: Task<Void, Never>?
     /// Work item used to wait briefly before starting an engine search.
     private var engineRequestDelayWorkItem: DispatchWorkItem?
     /// Work item used to advance automatic scenario replay.
     private var scenarioReplayWorkItem: DispatchWorkItem?
-    /// Token used to ignore stale engine responses after cancellation.
-    private var searchToken = UUID()
-    /// Current purpose for the running engine search.
-    private var activeSearchPurpose: EngineSearchPurpose?
-    /// Side to move for the current engine search, used to normalize scores.
-    private var activeSearchSideToMove: PieceColor?
-    /// FEN for the current engine search.
-    private var activeSearchFEN: String?
-    /// Search to start after the current engine search stops or returns bestmove.
-    private var pendingSearchRequest: EngineSearchRequest?
-    /// True when an active suggestion search has been stopped and its late output should be ignored.
-    private var ignoresActiveSuggestionOutput = false
     /// Latest first move for each one-based MultiPV rank.
     private var suggestedMovesByRank: [Int: Move] = [:]
     /// FEN for the cached suggestion ranks.
     private var suggestedMovesPositionFEN: String?
     /// Ensures we only start the engine once when the view appears.
     private var didStart = false
-    /// Quick flag to prevent parallel searches.
-    private var isEngineThinking = false
     /// Cosmetic delay before asking Stockfish for a reply, so the demo feels like the engine is thinking.
     private let engineReplyDelaySeconds: TimeInterval
     /// Delay between moves during automatic scenario replay.
     private let scenarioReplayDelaySeconds: TimeInterval
+    /// Stockfish-backed move and analysis provider for normal gameplay.
+    private lazy var stockfishProvider = StockfishMoveProvider { [weak self] event in
+        self?.receiveStockfishEvent(event)
+    }
 
     init(
         playerColor: PieceColor,
@@ -353,27 +324,22 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        guard activeSearchPurpose != .opponentMove else { return }
+        guard stockfishProvider.activePurpose != .opponentMove else { return }
 
         if let moveProvider {
             applyMoveProviderSuggestionArrows(moveProvider)
             return
         }
 
-        let request = EngineSearchRequest(
-            purpose: .suggestions,
-            fen: fenSerializer.fen(from: boardModel.game.position),
-            sideToMove: boardModel.game.position.state.turn,
-            multiPVCount: Self.maximumSuggestionArrowCount
-        )
+        let request = stockfishSearchRequest(purpose: .suggestions)
 
-        if activeSearchPurpose == .suggestions {
+        if stockfishProvider.activePurpose == .suggestions {
             cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
         } else {
             suggestedMovesByRank.removeAll()
             suggestedMovesPositionFEN = nil
             boardModel.clearArrows()
-            startOrQueueEngineSearch(request)
+            stockfishProvider.startOrQueueSearch(request)
         }
     }
 
@@ -384,7 +350,7 @@ final class GameViewModel: ObservableObject {
 
         suggestionArrowCount = clampedCount
         if clampedCount == 0 {
-            if activeSearchPurpose == .suggestions {
+            if stockfishProvider.activePurpose == .suggestions {
                 cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
             } else {
                 boardModel.clearArrows()
@@ -590,13 +556,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        let request = EngineSearchRequest(
-            purpose: .opponentMove,
-            fen: fenSerializer.fen(from: boardModel.game.position),
-            sideToMove: boardModel.game.position.state.turn,
-            multiPVCount: 1
-        )
-        startOrQueueEngineSearch(request)
+        stockfishProvider.startOrQueueSearch(stockfishSearchRequest(purpose: .opponentMove))
     }
 
     /// Applies a deterministic provider move for scenario-backed UI tests.
@@ -616,33 +576,35 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Handles parsed UCI output from the persistent engine.
-    private func receiveEngineOutput(_ output: UCIParsedLine) {
-        guard let searchSideToMove = activeSearchSideToMove else { return }
+    /// Handles typed output from the Stockfish provider.
+    private func receiveStockfishEvent(_ event: StockfishMoveProviderEvent) {
+        switch event {
+        case .output(let output, let request):
+            switch request.purpose {
+            case .opponentMove:
+                receiveOpponentEngineOutput(output, request: request)
+            case .suggestions:
+                receiveSuggestionEngineOutput(output, request: request)
+            }
 
-        switch activeSearchPurpose {
-        case .opponentMove:
-            receiveOpponentEngineOutput(output, searchSideToMove: searchSideToMove)
-        case .suggestions:
-            receiveSuggestionEngineOutput(output, searchSideToMove: searchSideToMove)
-        case nil:
-            return
+        case .timeout(let request):
+            handleStockfishTimeout(request)
         }
     }
 
     /// Handles parsed UCI output from an opponent-move search.
     private func receiveOpponentEngineOutput(
         _ output: UCIParsedLine,
-        searchSideToMove: PieceColor
+        request: StockfishSearchRequest
     ) {
         switch output {
         case .info(let info):
-            if let score = info.whiteRelativeScore(sideToMove: searchSideToMove) {
+            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
                 evaluation = chessEvaluation(from: score)
             }
 
         case .bestMove(let bestMove):
-            receiveEngineMove(move: bestMove.move)
+            receiveStockfishMove(move: bestMove.move)
 
         case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
             return
@@ -652,33 +614,27 @@ final class GameViewModel: ObservableObject {
     /// Handles parsed UCI output from a move-suggestion search.
     private func receiveSuggestionEngineOutput(
         _ output: UCIParsedLine,
-        searchSideToMove: PieceColor
+        request: StockfishSearchRequest
     ) {
         switch output {
         case .info(let info):
-            if let score = info.whiteRelativeScore(sideToMove: searchSideToMove) {
+            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
                 evaluation = chessEvaluation(from: score)
             }
 
-            if pendingSearchRequest == nil,
-               !ignoresActiveSuggestionOutput,
-               suggestionArrowCount > 0
-            {
-                updateSuggestionArrow(from: info)
+            if suggestionArrowCount > 0 {
+                updateSuggestionArrow(from: info, positionFEN: request.fen)
             }
 
         case .bestMove(let bestMove):
-            if pendingSearchRequest == nil,
-               !ignoresActiveSuggestionOutput,
-               suggestionArrowCount > 0,
+            if suggestionArrowCount > 0,
                suggestedMovesByRank.isEmpty,
                let move = bestMove.move
             {
                 suggestedMovesByRank[1] = move
-                suggestedMovesPositionFEN = activeSearchFEN
+                suggestedMovesPositionFEN = request.fen
                 refreshSuggestionArrows()
             }
-            finishCurrentEngineSearch()
 
         case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
             return
@@ -686,15 +642,12 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Handles the engine move after receiving a parsed `bestmove` line.
-    private func receiveEngineMove(move: Move?) {
+    private func receiveStockfishMove(move: Move?) {
         // A nil move means Stockfish has no legal move.
         guard let move else {
-            finishCurrentEngineSearch()
             endGame(title: "Engine Error", message: "Stockfish did not return a move.")
             return
         }
-
-        finishCurrentEngineSearch()
 
         guard applyMove(
             move: move,
@@ -710,54 +663,20 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Fires when the engine does not respond within the timeout window.
-    private func handleEngineTimeout(token: UUID) {
-        // Only act if this timeout corresponds to the current search.
-        guard isEngineThinking, token == searchToken else { return }
-
-        if activeSearchPurpose == .suggestions {
-            finishCurrentEngineSearch()
+    /// Handles provider-reported Stockfish search timeouts.
+    private func handleStockfishTimeout(_ request: StockfishSearchRequest) {
+        if request.purpose == .suggestions {
             return
         }
 
-        // Cancel the engine and present a failure message.
-        finishCurrentEngineSearch()
         endGame(title: "Engine Timeout", message: "Stockfish did not return a move.")
-    }
-
-    /// Finishes the current search while keeping the engine alive for the next request.
-    private func finishCurrentEngineSearch() {
-        // Rotate the token so late engine output is ignored.
-        searchToken = UUID()
-        // Reset the thinking flag so a new search can begin later.
-        isEngineThinking = false
-        activeSearchPurpose = nil
-        activeSearchSideToMove = nil
-        activeSearchFEN = nil
-        ignoresActiveSuggestionOutput = false
-        // Stop and clear any pending timeout.
-        engineTimeoutTask?.cancel()
-        engineTimeoutTask = nil
-
-        startPendingEngineSearchIfNeeded()
     }
 
     /// Cancels any running engine search without assuming it was active.
     private func stopEngineIfNeeded() {
-        // Reset the token and flag regardless of current state.
-        searchToken = UUID()
-        isEngineThinking = false
-        activeSearchPurpose = nil
-        activeSearchSideToMove = nil
-        activeSearchFEN = nil
-        pendingSearchRequest = nil
-        ignoresActiveSuggestionOutput = false
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         boardModel.clearArrows()
-        // Cancel the timeout so it does not fire after cleanup.
-        engineTimeoutTask?.cancel()
-        engineTimeoutTask = nil
         // Cancel any cosmetic delayed engine request.
         engineRequestDelayWorkItem?.cancel()
         engineRequestDelayWorkItem = nil
@@ -765,16 +684,7 @@ final class GameViewModel: ObservableObject {
         scenarioReplayWorkItem?.cancel()
         scenarioReplayWorkItem = nil
         moveProvider?.cancel()
-
-        if let engine {
-            // Stop off the main thread to avoid blocking UI.
-            DispatchQueue.global(qos: .userInitiated).async {
-                engine.stop()
-            }
-        }
-
-        // Drop the engine reference so it can be recreated later.
-        engine = nil
+        stockfishProvider.stop()
     }
 
     /// Evaluates draw and win conditions using ChessCore state.
@@ -820,12 +730,12 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        if activeSearchPurpose == .suggestions, activeSearchFEN == fen {
+        if stockfishProvider.activePurpose == .suggestions, stockfishProvider.activeFEN == fen {
             refreshSuggestionArrows()
             return
         }
 
-        guard activeSearchPurpose != .opponentMove else { return }
+        guard stockfishProvider.activePurpose != .opponentMove else { return }
 
         if let moveProvider {
             applyMoveProviderSuggestionArrows(moveProvider)
@@ -839,99 +749,12 @@ final class GameViewModel: ObservableObject {
         guard suggestionArrowCount > 0 else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
 
-        let request = EngineSearchRequest(
-            purpose: .suggestions,
-            fen: fenSerializer.fen(from: boardModel.game.position),
-            sideToMove: boardModel.game.position.state.turn,
-            multiPVCount: Self.maximumSuggestionArrowCount
-        )
-        startOrQueueEngineSearch(request)
-    }
-
-    /// Starts a search or stops the current suggestion search and queues this one.
-    private func startOrQueueEngineSearch(_ request: EngineSearchRequest) {
-        if isEngineThinking {
-            if activeSearchPurpose == .suggestions {
-                cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
-            }
-            return
-        }
-
-        startEngineSearch(request)
-    }
-
-    /// Starts one UCI search on the persistent engine.
-    private func startEngineSearch(_ request: EngineSearchRequest) {
-        guard let engine = ensureEngineStarted() else { return }
-
-        isEngineThinking = true
-        activeSearchPurpose = request.purpose
-        activeSearchSideToMove = request.sideToMove
-        activeSearchFEN = request.fen
-        pendingSearchRequest = nil
-        ignoresActiveSuggestionOutput = false
-        searchToken = UUID()
-        engineTimeoutTask?.cancel()
-
-        if request.purpose == .suggestions {
-            suggestedMovesByRank.removeAll()
-            suggestedMovesPositionFEN = nil
-            boardModel.clearArrows()
-        }
-
-        engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
-        engine.sendCommand(UCICommand.isReady.string)
-        engine.sendCommand(UCICommand.newGame.string)
-        engine.sendCommand(UCICommand.position(.fen(request.fen)).string)
-        engine.sendCommand(UCICommand.go(.depth(engineDepth)).string)
-
-        startEngineTimeout(token: searchToken)
-    }
-
-    /// Lazily starts the single embedded Stockfish instance for this screen.
-    private func ensureEngineStarted() -> SFEngine? {
-        if let engine {
-            return engine
-        }
-
-        let parser = UCIParser()
-        let engine = SFEngine(lineHandler: { [weak self] line in
-            let parsedLine = parser.parse(line)
-            Task { @MainActor in
-                self?.receiveEngineOutput(parsedLine)
-            }
-        })
-
-        self.engine = engine
-        engine.start()
-        engine.sendCommand(UCICommand.uci.string)
-        return engine
-    }
-
-    /// Guard against engine hangs by timing out the active search.
-    private func startEngineTimeout(token: UUID) {
-        engineTimeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(30))
-            } catch {
-                return
-            }
-            await MainActor.run {
-                self?.handleEngineTimeout(token: token)
-            }
-        }
+        startStockfishSearch(stockfishSearchRequest(purpose: .suggestions))
     }
 
     /// Cancels only an active suggestion search, preserving opponent searches.
-    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
-        if activeSearchPurpose == .suggestions {
-            pendingSearchRequest = queueReplacement
-            ignoresActiveSuggestionOutput = true
-            engine?.sendCommand(UCICommand.stop.string)
-        } else if let queueReplacement {
-            pendingSearchRequest = queueReplacement
-        }
-
+    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: StockfishSearchRequest?) {
+        stockfishProvider.cancelSuggestionSearch(queueReplacement: queueReplacement)
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
 
@@ -940,11 +763,26 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Starts a queued search after the current search has ended.
-    private func startPendingEngineSearchIfNeeded() {
-        guard let request = pendingSearchRequest else { return }
-        pendingSearchRequest = nil
-        startEngineSearch(request)
+    /// Starts one Stockfish search after clearing stale suggestion state.
+    private func startStockfishSearch(_ request: StockfishSearchRequest) {
+        if request.purpose == .suggestions {
+            suggestedMovesByRank.removeAll()
+            suggestedMovesPositionFEN = nil
+            boardModel.clearArrows()
+        }
+
+        stockfishProvider.startOrQueueSearch(request)
+    }
+
+    /// Captures the current board position and search settings in one immutable request.
+    private func stockfishSearchRequest(purpose: StockfishSearchPurpose) -> StockfishSearchRequest {
+        StockfishSearchRequest(
+            purpose: purpose,
+            fen: fenSerializer.fen(from: boardModel.game.position),
+            sideToMove: boardModel.game.position.state.turn,
+            depth: engineDepth,
+            multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1
+        )
     }
 
     /// Creates deterministic suggestion arrows from a non-Stockfish provider.
@@ -972,14 +810,14 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Updates one suggested move from a parsed `info multipv` line.
-    private func updateSuggestionArrow(from info: UCIInfoLine) {
+    private func updateSuggestionArrow(from info: UCIInfoLine, positionFEN: String) {
         guard let move = info.principalVariation.first else { return }
 
         let rank = info.multipv ?? 1
         guard (1...Self.maximumSuggestionArrowCount).contains(rank) else { return }
 
         suggestedMovesByRank[rank] = move
-        suggestedMovesPositionFEN = activeSearchFEN
+        suggestedMovesPositionFEN = positionFEN
         refreshSuggestionArrows()
     }
 

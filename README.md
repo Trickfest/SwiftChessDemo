@@ -44,10 +44,12 @@ Data flow at a glance:
   `Game.status` and draw-claim APIs, then rendered with `ChessGameStatusView`.
 - Legal moves are also captured as `ChessMoveRecord` values before they are
   applied, so `ChessMoveListView` can render SAN without owning the game.
-- When it is the engine's turn, `ChessUCI` formats the UCI handshake,
-  `position`, and `go` command strings sent to Stockfish.
-- Stockfish streams `info` lines that `ChessUCI` parses into White-positive
-  evaluation values for `ChessEvaluationBar`.
+- When it is the engine's turn, `StockfishMoveProvider` uses `ChessUCI` to
+  format the UCI handshake, `position`, and `go` command strings sent to
+  Stockfish.
+- Stockfish streams `info` lines through `StockfishMoveProvider`, where
+  `ChessUCI` parses them into White-positive evaluation values for
+  `ChessEvaluationBar`.
 - When suggestions are enabled, SwiftChessDemo asks Stockfish for up to three
   MultiPV analysis lines on the human player's turn, caches the ranked first
   moves, and filters the visible ChessUI arrows according to the user's
@@ -66,10 +68,12 @@ Key files to read:
   components, optional evaluation-bar display, in-game engine-depth control,
   selectable move-suggestion arrows, compact horizontal move-list layout on
   iPhone, and navigation flow.
-- `SwiftChessDemo/GameViewModel.swift`: display state, engine coordination, safe
-  move application, ChessUCI command formatting and parsing, evaluation
-  normalization, Stockfish MultiPV suggestion mapping, and ChessCore
-  game-status integration.
+- `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
+  provider event handling, evaluation normalization, Stockfish MultiPV
+  suggestion mapping, and ChessCore game-status integration.
+- `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
+  serialized search requests, UCI command formatting/parsing, timeouts, and
+  cancelled suggestion-output handling.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
   for deterministic replay fixtures.
 - `SwiftChessDemo/GameMoveProvider.swift`: deterministic move-provider

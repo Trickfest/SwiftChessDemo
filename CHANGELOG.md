@@ -81,6 +81,8 @@ for a release.
   directly in `GameViewModel`.
 - Replaced the temporary hard-coded UI-test move path with scenario-derived
   move controls and deterministic scenario suggestions.
+- Moved embedded Stockfish lifecycle, serialized UCI search requests, timeouts,
+  and cancelled suggestion-output handling into `StockfishMoveProvider`.
 
 ### Fixed
 
