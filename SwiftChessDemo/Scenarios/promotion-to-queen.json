@@ -1,0 +1,10 @@
+{
+  "id": "promotion-to-queen",
+  "title": "Promotion To Queen",
+  "pgnResource": "promotion-to-queen.pgn",
+  "playbackMode": "automaticReplay",
+  "initialPerspective": "white",
+  "stopAfterPly": 1,
+  "expectedStatus": "ongoing",
+  "notes": "Starts from a FEN-backed position and promotes a pawn to verify promotion replay."
+}

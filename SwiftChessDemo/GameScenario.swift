@@ -11,7 +11,7 @@
 import Foundation
 import ChessCore
 
-/// Declarative metadata for a scripted demo scenario.
+/// Declarative metadata for a deterministic demo scenario.
 struct GameScenarioDefinition: Decodable, Equatable {
     /// Stable identifier used by launch configuration and UI tests.
     let id: String
@@ -33,10 +33,32 @@ struct GameScenarioDefinition: Decodable, Equatable {
     let notes: String?
 }
 
-/// Supported scripted playback modes.
+/// Supported scenario playback modes.
 enum GameScenarioPlaybackMode: String, Decodable, Equatable {
     /// Replays both sides from the PGN without Stockfish or user input.
     case automaticReplay
+    /// UI tests drive White's moves while the scenario supplies Black's replies.
+    case testDrivesWhite
+    /// UI tests drive Black's moves while the scenario supplies White's replies.
+    case testDrivesBlack
+
+    /// `true` when both sides are supplied by the scenario.
+    var isAutomaticReplay: Bool {
+        self == .automaticReplay
+    }
+
+    /// Side that should be driven by UI-test controls, if any.
+    var testDrivenColor: PieceColor? {
+        switch self {
+        case .automaticReplay:
+            return nil
+        case .testDrivesWhite:
+            return .white
+        case .testDrivesBlack:
+            return .black
+        }
+    }
+
 }
 
 /// Codable color value used in scenario files.
@@ -70,7 +92,7 @@ struct GameScenario: Equatable {
     var playbackMode: GameScenarioPlaybackMode { definition.playbackMode }
     /// Initial board perspective.
     var initialPerspective: PieceColor {
-        definition.initialPerspective?.pieceColor ?? .white
+        definition.initialPerspective?.pieceColor ?? playbackMode.testDrivenColor ?? .white
     }
     /// Initial position loaded from PGN, including FEN-backed setup games.
     var initialPosition: Position { pgnGame.initialPosition }

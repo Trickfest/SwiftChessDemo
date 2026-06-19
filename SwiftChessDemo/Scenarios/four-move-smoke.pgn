@@ -1,0 +1,9 @@
+[Event "SwiftChessDemo Scenario"]
+[Site "Local"]
+[Date "2026.06.19"]
+[Round "-"]
+[White "Scenario White"]
+[Black "Scenario Black"]
+[Result "*"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. d3 Bc5 *

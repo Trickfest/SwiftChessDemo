@@ -22,6 +22,8 @@ protocol GameMoveProvider: AnyObject {
     func nextMove(for game: Game, ply: Int) -> Move?
     /// Returns deterministic suggestion moves for the current position, when supported.
     func suggestionMoves(for game: Game, maxCount: Int) -> [Move]
+    /// Returns coordinate moves exposed through test-only UI controls.
+    func uiTestMoveCoordinates(for game: Game) -> [String]
     /// Cancels any provider-owned work.
     func cancel()
 }
@@ -30,6 +32,10 @@ extension GameMoveProvider {
     var showsUITestMoveControls: Bool { false }
 
     func suggestionMoves(for game: Game, maxCount: Int) -> [Move] {
+        []
+    }
+
+    func uiTestMoveCoordinates(for game: Game) -> [String] {
         []
     }
 
@@ -49,7 +55,11 @@ final class ScenarioReplayMoveProvider: GameMoveProvider {
     }
 
     var isAutomaticReplay: Bool {
-        true
+        scenario.playbackMode.isAutomaticReplay
+    }
+
+    var showsUITestMoveControls: Bool {
+        scenario.playbackMode.testDrivenColor != nil
     }
 
     func nextMove(for game: Game, ply: Int) -> Move? {
@@ -61,65 +71,37 @@ final class ScenarioReplayMoveProvider: GameMoveProvider {
         guard record.color == game.position.state.turn else { return nil }
         return record.move
     }
-}
-
-/// Temporary provider used by legacy move-flow UI tests.
-///
-/// TODO: Retire this provider after scenario-backed interactive tests cover the
-/// existing white/black move-flow smoke tests.
-final class ScriptedUITestMoveProvider: GameMoveProvider {
-    private let playerColor: PieceColor
-
-    init(playerColor: PieceColor) {
-        self.playerColor = playerColor
-    }
-
-    var name: String {
-        "Scripted UI Test"
-    }
-
-    var isAutomaticReplay: Bool {
-        false
-    }
-
-    var showsUITestMoveControls: Bool {
-        true
-    }
-
-    func nextMove(for game: Game, ply: Int) -> Move? {
-        preferredOpponentMoves()
-            .compactMap { try? Move(string: $0) }
-            .first { game.legalMoves.contains($0) }
-            ?? game.legalMoves.first
-    }
 
     func suggestionMoves(for game: Game, maxCount: Int) -> [Move] {
-        var rankedMoves = preferredPlayerMoves()
-            .compactMap { try? Move(string: $0) }
-            .filter { game.legalMoves.contains($0) }
-
-        for move in game.legalMoves where !rankedMoves.contains(move) {
-            rankedMoves.append(move)
+        guard let testDrivenColor = scenario.playbackMode.testDrivenColor,
+              game.position.state.turn == testDrivenColor
+        else {
+            return []
         }
 
-        return Array(rankedMoves.prefix(maxCount))
+        var moves: [Move] = []
+        let records = Array(scenario.replayRecords)
+        for record in records.dropFirst(max(0, game.moveHistory.count)) where record.color == testDrivenColor {
+            guard game.legalMoves.contains(record.move) else { continue }
+            moves.append(record.move)
+            if moves.count == maxCount {
+                return moves
+            }
+        }
+        return moves
     }
 
-    private func preferredOpponentMoves() -> [String] {
-        switch playerColor.opposite {
-        case .white:
-            return ["e2e4", "g1f3", "f1c4", "d2d3"]
-        case .black:
-            return ["e7e5", "b8c6", "g8f6", "f8c5"]
+    func uiTestMoveCoordinates(for game: Game) -> [String] {
+        guard let testDrivenColor = scenario.playbackMode.testDrivenColor,
+              game.position.state.turn == testDrivenColor
+        else {
+            return []
         }
-    }
 
-    private func preferredPlayerMoves() -> [String] {
-        switch playerColor {
-        case .white:
-            return ["e2e4", "g1f3", "f1c4", "d2d4", "d2d3", "c2c4"]
-        case .black:
-            return ["e7e5", "g8f6", "d7d5", "f8c5", "b8c6", "c7c5"]
-        }
+        let records = Array(scenario.replayRecords)
+        return records
+            .dropFirst(max(0, game.moveHistory.count))
+            .filter { $0.color == testDrivenColor && game.legalMoves.contains($0.move) }
+            .map { $0.move.description }
     }
 }

@@ -1,0 +1,9 @@
+{
+  "id": "suggestion-line",
+  "title": "Suggestion Line",
+  "pgnResource": "suggestion-line.pgn",
+  "playbackMode": "testDrivesWhite",
+  "stopAfterPly": 8,
+  "expectedStatus": "ongoing",
+  "notes": "Provides deterministic ranked suggestion arrows from the scenario's future White moves."
+}

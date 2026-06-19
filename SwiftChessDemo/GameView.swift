@@ -518,7 +518,7 @@ struct GameView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d3", "f8c5"], id: \.self) { move in
+                    ForEach(viewModel.uiTestMoveCoordinates, id: \.self) { move in
                         Button(move) {
                             viewModel.performUITestMove(move)
                         }

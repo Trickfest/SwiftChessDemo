@@ -43,14 +43,14 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testWhiteGameFlowCompletesFourFullMoves() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "white-four-move-smoke")
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
         var position = try boardValue(in: app)
-        for (index, move) in ["e2e4", "g1f3", "f1c4", "d2d3"].enumerated() {
-            try tapMove(move, in: app)
+        for index in 0..<4 {
+            try tapNextScenarioMove(in: app, named: "White scenario move \(index + 1)")
 
             let afterWhiteMove = try waitForBoardTurn(
                 .black,
@@ -70,10 +70,9 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testBlackGameFlowCompletesFourFullMoves() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "black-four-move-smoke")
         app.launch()
 
-        try select("Play as Black", in: app)
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
         let initialPosition = try boardValue(in: app)
@@ -85,8 +84,8 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
 
         var position = afterWhiteEngineMove
-        for (index, move) in ["e7e5", "b8c6", "g8f6", "f8c5"].enumerated() {
-            try tapMove(move, in: app)
+        for index in 0..<4 {
+            try tapNextScenarioMove(in: app, named: "Black scenario move \(index + 1)")
 
             position = try waitForBoardTurn(
                 .white,
@@ -184,7 +183,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameReferenceComponentsRenderAndMoveListUpdates() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "white-four-move-smoke")
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -218,7 +217,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             .white,
             from: afterWhiteMove,
             in: app,
-            named: "Black scripted reply"
+            named: "Black scenario reply"
         )
 
         let blackMove = try requireElement(
@@ -275,7 +274,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameEngineDepthStepperUpdatesGameDepth() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "white-four-move-smoke")
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -336,8 +335,8 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameEvaluationBarKeepsLatestEngineScoreAfterReply() throws {
-        let app = moveSmokeTestApplication()
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_EVALUATION_BEFORE_REPLY"] = "cp:-220"
+        let app = moveSmokeTestApplication(id: "white-four-move-smoke")
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION_BEFORE_REPLY"] = "cp:-220"
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -361,18 +360,18 @@ final class SwiftChessDemoUITests: XCTestCase {
             .white,
             from: afterWhiteMove,
             in: app,
-            named: "Black scripted reply"
+            named: "Black scenario reply"
         )
         try waitForElementValue(
             evaluationBar,
             expectedValue: "Black advantage 2.2 pawns",
-            named: "evaluation after scripted engine reply",
+            named: "evaluation after scenario reply",
             timeout: 5
         )
     }
 
     func testGameSuggestionArrowPickerControlsRenderedArrows() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "suggestion-line")
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -441,7 +440,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameSuggestionArrowsRefreshAfterOpponentReply() throws {
-        let app = moveSmokeTestApplication()
+        let app = moveSmokeTestApplication(id: "suggestion-line")
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT"] = "2"
         app.launch()
 
@@ -474,7 +473,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             .white,
             from: afterWhiteMove,
             in: app,
-            named: "Black scripted reply"
+            named: "Black scenario reply"
         )
 
         try requireElement(
@@ -485,6 +484,94 @@ final class SwiftChessDemoUITests: XCTestCase {
             app.descendants(matching: .any)["ChessUI.arrow.f1.c4"].firstMatch,
             named: "refreshed second suggestion arrow"
         )
+    }
+
+    func testGameScenarioReplayRunsLongOpeningLine() throws {
+        let app = scenarioTestApplication(id: "ruy-lopez-long")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario ply: 20/20",
+            in: app,
+            named: "long replay completion",
+            timeout: 15
+        )
+        try waitForGameBoardState(
+            containing: "Scenario status: Ongoing",
+            in: app,
+            named: "long replay ongoing status"
+        )
+        let finalMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.20"].firstMatch,
+            named: "long replay final move"
+        )
+        XCTAssertTrue(finalMove.label.contains("Black Nbd7"))
+    }
+
+    func testGameScenarioReplayHandlesPromotion() throws {
+        let app = scenarioTestApplication(id: "promotion-to-queen")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario ply: 1/1",
+            in: app,
+            named: "promotion replay completion"
+        )
+        let promotionMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.1"].firstMatch,
+            named: "promotion move"
+        )
+        XCTAssertEqual(promotionMove.value as? String, "a7a8q")
+        XCTAssertTrue(promotionMove.label.contains("a8=Q"))
+    }
+
+    func testGameScenarioReplayStartsFromInsufficientMaterial() throws {
+        let app = scenarioTestApplication(id: "insufficient-material-position")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario status: Draw, Draw by insufficient material",
+            in: app,
+            named: "insufficient material status"
+        )
+
+        let alert = try requireElement(
+            app.alerts["Draw by insufficient material"].firstMatch,
+            named: "insufficient material alert"
+        )
+        XCTAssertTrue(alert.staticTexts["Draw"].exists)
+    }
+
+    func testGameScenarioReplayHandlesCastlingAndEnPassant() throws {
+        let app = scenarioTestApplication(id: "special-moves")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario ply: 11/11",
+            in: app,
+            named: "special moves replay completion",
+            timeout: 10
+        )
+
+        let castlingMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.7"].firstMatch,
+            named: "castling move"
+        )
+        XCTAssertTrue(castlingMove.label.contains("O-O"))
+
+        let enPassantMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.11"].firstMatch,
+            named: "en passant move"
+        )
+        XCTAssertTrue(enPassantMove.label.contains("exd6"))
     }
 
     func testGameScenarioReplayRunsPGNToCheckmate() throws {
@@ -656,11 +743,9 @@ final class SwiftChessDemoUITests: XCTestCase {
         }
     }
 
-    private func moveSmokeTestApplication() -> XCUIApplication {
-        let app = XCUIApplication()
+    private func moveSmokeTestApplication(id: String) -> XCUIApplication {
+        let app = scenarioTestApplication(id: id)
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "1.0"
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE"] = "1"
         return app
     }
 
@@ -684,6 +769,18 @@ final class SwiftChessDemoUITests: XCTestCase {
             line: line
         )
         .tap()
+    }
+
+    private func tapNextScenarioMove(
+        in app: XCUIApplication,
+        named name: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let nextMoveButton = app.buttons
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "UITest.move."))
+            .firstMatch
+        try requireElement(nextMoveButton, named: name, file: file, line: line).tap()
     }
 
     private func waitForBoardTurn(

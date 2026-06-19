@@ -1,0 +1,9 @@
+{
+  "id": "black-four-move-smoke",
+  "title": "Black Four-Move Smoke",
+  "pgnResource": "four-move-smoke.pgn",
+  "playbackMode": "testDrivesBlack",
+  "stopAfterPly": 8,
+  "expectedStatus": "ongoing",
+  "notes": "UI tests drive Black's moves while the scenario supplies deterministic White moves."
+}

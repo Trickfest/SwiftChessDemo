@@ -43,8 +43,9 @@ for a release.
 - Added SwiftChessDemo UI coverage for scenario replay checkmate, terminal
   FEN-backed stalemate, and missing-scenario setup errors.
 - Added SwiftChessDemo UI tests that exercise four full moves from both white
-  and black perspectives, using a test-only scripted engine path for
-  deterministic opponent replies.
+  and black perspectives using scenario-backed deterministic opponent replies.
+- Added a broader PGN scenario corpus covering a longer opening line,
+  promotion, insufficient material, castling, and en passant.
 
 ### Changed
 
@@ -76,8 +77,10 @@ for a release.
   analysis instead of changing the Stockfish MultiPV count for each visible
   arrow count.
 - Isolated deterministic non-Stockfish moves behind a `GameMoveProvider`
-  abstraction so scenario replay and legacy scripted UI tests do not live
+  abstraction so scenario replay and scenario-backed UI tests do not live
   directly in `GameViewModel`.
+- Replaced the temporary hard-coded UI-test move path with scenario-derived
+  move controls and deterministic scenario suggestions.
 
 ### Fixed
 

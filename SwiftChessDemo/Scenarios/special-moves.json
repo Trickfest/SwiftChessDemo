@@ -1,0 +1,10 @@
+{
+  "id": "special-moves",
+  "title": "Castling And En Passant",
+  "pgnResource": "special-moves.pgn",
+  "playbackMode": "automaticReplay",
+  "initialPerspective": "white",
+  "stopAfterPly": 11,
+  "expectedStatus": "ongoing",
+  "notes": "Exercises castling and en passant SAN through automatic scenario replay."
+}

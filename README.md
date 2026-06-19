@@ -73,7 +73,7 @@ Key files to read:
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
   for deterministic replay fixtures.
 - `SwiftChessDemo/GameMoveProvider.swift`: deterministic move-provider
-  abstraction used by scenario replay and legacy UI-test scripting.
+  abstraction used by scenario replay and scenario-backed UI tests.
 - `SwiftChessDemo/Scenarios/`: checked-in scenario JSON and PGN fixtures.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
@@ -87,18 +87,21 @@ Automated UI tests:
   optionally `SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=0`. Each scenario id maps
   to a JSON file in `SwiftChessDemo/Scenarios`; the JSON points at the PGN
   fixture that supplies the validated move list.
-- The game-flow UI tests set `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1` so
-  opponent replies are deterministic instead of coming from Stockfish.
-- The same tests also set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` and
-  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to keep simulator runs
-  fast. Normal app launches do not set these flags and continue to use
-  Stockfish for engine moves.
+- The game-flow UI tests run named scenarios in `testDrivesWhite` or
+  `testDrivesBlack` mode so one side is driven by UI-test taps while the
+  scenario supplies the opposing replies. This keeps move-flow coverage
+  deterministic without starting Stockfish.
+- The game-flow tests set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` to keep
+  simulator runs fast. UI tests that exercise live engine replies can also set
+  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to reduce the visible
+  thinking pause. Normal app launches do not set these flags and continue to
+  use Stockfish for engine moves.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live Stockfish analysis.
-- Suggestion-arrow UI coverage uses `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1`
-  plus optional `SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT` values from
-  `0` through `3` so rendered arrows are deterministic without live Stockfish
+- Suggestion-arrow UI coverage uses scenario-backed move suggestions plus
+  optional `SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT` values from `0`
+  through `3` so rendered arrows are deterministic without live Stockfish
   analysis.
 
 Scenario files:
@@ -107,11 +110,12 @@ Scenario files:
   notes.
 - PGN remains the readable source of moves. SwiftChessDemo does not check in a
   normalized move-list artifact; it parses and validates the PGN on launch.
-- The first supported playback mode is `automaticReplay`, which replays both
-  sides without user input or Stockfish.
-- Follow-up: retire `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE` and the temporary
-  `ScriptedUITestMoveProvider` once scenario-backed interactive tests cover the
-  existing white/black move-flow smoke tests.
+- Supported playback modes are:
+  - `automaticReplay`: replay both sides without user input or Stockfish.
+  - `testDrivesWhite`: expose test-only buttons for White moves and let the
+    scenario provide Black replies.
+  - `testDrivesBlack`: expose test-only buttons for Black moves and let the
+    scenario provide White replies.
 
 Local dependencies:
 - `../SwiftChessTools`: local Swift package products `ChessCore`, `ChessUI`,

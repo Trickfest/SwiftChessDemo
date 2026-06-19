@@ -112,7 +112,7 @@ final class GameViewModel: ObservableObject {
     private let moveRecordBuilder = ChessMoveRecordBuilder()
     /// The persistent Stockfish engine for this game screen.
     private var engine: SFEngine?
-    /// Optional deterministic move provider used for scenarios and legacy UI tests.
+    /// Optional deterministic move provider used for scenarios and scenario-backed UI tests.
     private let moveProvider: GameMoveProvider?
     /// Scenario being replayed, if this game was launched in scenario mode.
     private let scenario: GameScenario?
@@ -158,8 +158,6 @@ final class GameViewModel: ObservableObject {
         self.scenario = scenario
         if let scenario {
             self.moveProvider = ScenarioReplayMoveProvider(scenario: scenario)
-        } else if Self.usesScriptedUITestEngine {
-            self.moveProvider = ScriptedUITestMoveProvider(playerColor: playerColor)
         } else {
             self.moveProvider = nil
         }
@@ -266,9 +264,9 @@ final class GameViewModel: ObservableObject {
     /// Highest number of ranked engine suggestion lines the demo requests.
     private static let maximumSuggestionArrowCount = 3
 
-    /// UI tests can simulate an engine `info score` update before a scripted best move is applied.
-    private static var scriptedEvaluationBeforeEngineReply: ChessEvaluation? {
-        guard let value = ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_EVALUATION_BEFORE_REPLY"] else {
+    /// UI tests can simulate an engine `info score` update before a provider move is applied.
+    private static var evaluationBeforeProviderReply: ChessEvaluation? {
+        guard let value = ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION_BEFORE_REPLY"] else {
             return nil
         }
 
@@ -303,15 +301,14 @@ final class GameViewModel: ObservableObject {
         min(maximumEngineDepth, max(minimumEngineDepth, depth))
     }
 
-    /// UI tests use scripted opponent replies so interaction tests are not
-    /// coupled to Stockfish startup time or changing engine choices.
-    static var usesScriptedUITestEngine: Bool {
-        ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE"] == "1"
-    }
-
     /// Test-only controls are opt-in through the UI test launch environment.
     var showsUITestMoveControls: Bool {
         moveProvider?.showsUITestMoveControls == true
+    }
+
+    /// Scenario-derived coordinate moves exposed to UI tests.
+    var uiTestMoveCoordinates: [String] {
+        moveProvider?.uiTestMoveCoordinates(for: boardModel.game) ?? []
     }
 
     /// Scenario state appended to the board accessibility marker for UI tests.
@@ -412,8 +409,10 @@ final class GameViewModel: ObservableObject {
             startAutomaticReplay()
             return
         }
-        // If the user chose black, the engine makes the first move.
-        if playerColor == .black {
+        // If the provider supplies the side to move, let it make the first move.
+        if moveProvider != nil, boardModel.game.position.state.turn != playerColor {
+            scheduleEngineMove()
+        } else if playerColor == .black {
             scheduleEngineMove()
         } else {
             scheduleSuggestionSearchIfNeeded()
@@ -600,15 +599,15 @@ final class GameViewModel: ObservableObject {
         startOrQueueEngineSearch(request)
     }
 
-    /// Applies a deterministic provider move for legacy UI tests.
+    /// Applies a deterministic provider move for scenario-backed UI tests.
     private func applyMoveProviderOpponentMove(_ moveProvider: GameMoveProvider) {
         guard let move = moveProvider.nextMove(for: boardModel.game, ply: moveRecords.count) else {
             endGame(title: "Draw", message: "No legal moves remain.")
             return
         }
 
-        if let scriptedEvaluation = Self.scriptedEvaluationBeforeEngineReply {
-            evaluation = scriptedEvaluation
+        if let providerEvaluation = Self.evaluationBeforeProviderReply {
+            evaluation = providerEvaluation
         }
 
         guard applyMove(move: move) else { return }
@@ -1081,7 +1080,7 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// User-facing checkmate message for live games and scripted scenarios.
+    /// User-facing checkmate message for live games and deterministic scenarios.
     private func checkmateMessage(winner: PieceColor) -> String {
         if moveProvider?.isAutomaticReplay == true {
             return "\(winner.displayName) wins"

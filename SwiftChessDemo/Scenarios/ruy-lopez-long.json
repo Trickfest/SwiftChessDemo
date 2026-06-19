@@ -1,0 +1,10 @@
+{
+  "id": "ruy-lopez-long",
+  "title": "Ruy Lopez Long Replay",
+  "pgnResource": "ruy-lopez-long.pgn",
+  "playbackMode": "automaticReplay",
+  "initialPerspective": "white",
+  "stopAfterPly": 20,
+  "expectedStatus": "ongoing",
+  "notes": "A longer automatic replay used to exercise repeated board, status, and move-list updates."
+}

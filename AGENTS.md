@@ -43,13 +43,14 @@ not change that package's license. Dependency/license changes must update
   in-game piece-set selection, in-game board-theme selection, player-side
   setup, or move-flow behavior.
 - The move-flow UI tests cover four full moves from both white and black
-  perspectives. They launch with `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1`
-  so engine-side moves are deterministic and not coupled to Stockfish startup
-  time or best-move changes.
-- `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` and
-  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` are UI-test launch
-  environment flags used to keep simulator runs fast. Normal app launches
-  should not set these flags and should continue to exercise Stockfish.
+  perspectives. They launch named scenarios in `testDrivesWhite` or
+  `testDrivesBlack` mode so engine-side moves are deterministic and not coupled
+  to Stockfish startup time or best-move changes.
+- `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` keeps UI-test searches fast.
+  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` can reduce the visible
+  thinking pause for tests that still exercise live Stockfish replies. Normal
+  app launches should not set these flags and should continue to exercise
+  Stockfish.
 - If you change shared chess logic/UI, run `swift test` from `../SwiftChessTools`.
 - If you change engine integration, build `../StockfishEmbedded` smoke targets.
 
