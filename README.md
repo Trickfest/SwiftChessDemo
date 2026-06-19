@@ -56,11 +56,12 @@ Data flow at a glance:
 - Stockfish returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
 
 Key files to read:
-- `SwiftChessDemo/ContentView.swift`: configuration UI for side and engine depth.
+- `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the human side.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme, and
   coordinate-label switching during play, visible ChessUI status and move-list
-  components, optional evaluation-bar display, selectable move-suggestion
-  arrows, compact horizontal move-list layout on iPhone, and navigation flow.
+  components, optional evaluation-bar display, in-game engine-depth control,
+  selectable move-suggestion arrows, compact horizontal move-list layout on
+  iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, engine coordination, safe
   move application, ChessUCI command formatting and parsing, evaluation
   normalization, Stockfish MultiPV suggestion mapping, and ChessCore

@@ -36,26 +36,8 @@ private enum PlayerSide: String, CaseIterable, Identifiable {
 
 /// Launch screen where the user configures the demo before starting a game.
 struct ContentView: View {
-    /// Highest Stockfish search depth exposed by the demo setup UI.
-    private static let maximumEngineDepth = 30
-
     /// Which side the user has selected in the segmented control.
     @State private var playerSide: PlayerSide = .white
-    /// Depth for Stockfish search; higher values are slower but stronger.
-    @State private var depth: Int = Self.initialEngineDepth
-
-    /// UI tests can lower the engine depth to keep smoke flows fast without
-    /// changing the normal demo default.
-    private static var initialEngineDepth: Int {
-        let environment = ProcessInfo.processInfo.environment
-        guard let depthValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"],
-              let depth = Int(depthValue)
-        else {
-            return 8
-        }
-
-        return min(max(depth, 1), maximumEngineDepth)
-    }
 
     var body: some View {
         // NavigationStack enables the push to the game screen.
@@ -70,20 +52,10 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("Setup.sidePicker")
 
-                // Show Stockfish depth with a stepper so users can experiment.
-                Stepper(value: $depth, in: 1...Self.maximumEngineDepth) {
-                    HStack {
-                        Text("Depth")
-                        Spacer()
-                        Text("\(depth)")
-                    }
-                }
-
                 // The main transition into gameplay; passes config into GameView.
                 NavigationLink("Start Game") {
                     GameView(
                         playerColor: playerSide.pieceColor,
-                        engineDepth: depth,
                         pieceSet: .artDecoMonochrome,
                         boardTheme: .artDecoMonochrome
                     )

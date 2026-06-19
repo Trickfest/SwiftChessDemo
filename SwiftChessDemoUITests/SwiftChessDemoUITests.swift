@@ -274,6 +274,29 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
     }
 
+    func testGameEngineDepthStepperUpdatesGameDepth() throws {
+        let app = moveSmokeTestApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try waitForGameBoardState(containing: "Depth: 1", in: app, named: "initial engine depth")
+
+        let incrementButton = try scrollUntilHittable(
+            app.buttons["Game.engineDepthStepper-Increment"].firstMatch,
+            named: "engine depth increment button",
+            in: app
+        )
+        incrementButton.tap()
+        try waitForGameBoardState(containing: "Depth: 2", in: app, named: "incremented engine depth")
+
+        let decrementButton = try requireElement(
+            app.buttons["Game.engineDepthStepper-Decrement"].firstMatch,
+            named: "engine depth decrement button"
+        )
+        decrementButton.tap()
+        try waitForGameBoardState(containing: "Depth: 1", in: app, named: "decremented engine depth")
+    }
+
     func testGameEvaluationBarRendersAndToggles() throws {
         let app = XCUIApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION"] = "cp:85"
@@ -625,6 +648,31 @@ final class SwiftChessDemoUITests: XCTestCase {
         throw UITestFailure(description: message)
     }
 
+    private func waitForGameBoardState(
+        containing expectedValue: String,
+        in app: XCUIApplication,
+        named changeName: String,
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastValue = ""
+
+        repeat {
+            lastValue = try gameBoardStateValue(in: app, file: file, line: line)
+            if lastValue.contains(expectedValue) {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        let message = "Game board state did not contain \(expectedValue) after \(changeName). Last value: \(lastValue)"
+        XCTFail(message, file: file, line: line)
+        throw UITestFailure(description: message)
+    }
+
     private func boardValue(
         in app: XCUIApplication,
         file: StaticString = #filePath,
@@ -635,6 +683,21 @@ final class SwiftChessDemoUITests: XCTestCase {
             return uiTestFEN.label
         }
 
+        let board = try requireElement(
+            app.descendants(matching: .any)["Game.boardState"].firstMatch,
+            named: "game board state",
+            file: file,
+            line: line
+        )
+
+        return board.value as? String ?? ""
+    }
+
+    private func gameBoardStateValue(
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
         let board = try requireElement(
             app.descendants(matching: .any)["Game.boardState"].firstMatch,
             named: "game board state",

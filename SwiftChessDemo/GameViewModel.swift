@@ -86,6 +86,8 @@ final class GameViewModel: ObservableObject {
     @Published var showsEvaluationBar = true
     /// Number of app-supplied engine suggestion arrows shown on the board.
     @Published private(set) var suggestionArrowCount: Int
+    /// Stockfish search depth used for future engine and suggestion searches.
+    @Published private(set) var engineDepth: Int
     /// ChessCore status mirrored for SwiftUI rendering.
     @Published private(set) var gameStatus: GameStatus
     /// Side to move mirrored for SwiftUI rendering.
@@ -101,8 +103,6 @@ final class GameViewModel: ObservableObject {
 
     /// The human player's color; used to gate whose turn it is.
     let playerColor: PieceColor
-    /// Stockfish depth for the engine search.
-    let engineDepth: Int
     /// ChessUI model that binds to the board UI.
     let boardModel: ChessBoardModel
 
@@ -139,11 +139,11 @@ final class GameViewModel: ObservableObject {
     /// Cosmetic delay before asking Stockfish for a reply, so the demo feels like the engine is thinking.
     private let engineReplyDelaySeconds: TimeInterval
 
-    init(playerColor: PieceColor, engineDepth: Int, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
+    init(playerColor: PieceColor, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
-        // Store the Stockfish depth so search limits stay consistent.
-        self.engineDepth = engineDepth
+        // Store the Stockfish depth so future searches use the current setting.
+        self.engineDepth = Self.initialEngineDepth
         // UI tests can lower the cosmetic delay while normal demo launches keep it.
         self.engineReplyDelaySeconds = Self.initialEngineReplyDelaySeconds
         // Keep the selected ChessUI artwork available for menus and board updates.
@@ -180,6 +180,25 @@ final class GameViewModel: ObservableObject {
         }
 
         return max(delay, 0)
+    }
+
+    /// Lowest Stockfish search depth exposed by the game screen.
+    static let minimumEngineDepth = 1
+
+    /// Highest Stockfish search depth exposed by the game screen.
+    static let maximumEngineDepth = 30
+
+    /// UI tests can lower the engine depth to keep smoke flows fast without
+    /// changing the normal demo default.
+    private static var initialEngineDepth: Int {
+        let environment = ProcessInfo.processInfo.environment
+        guard let depthValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"],
+              let depth = Int(depthValue)
+        else {
+            return 8
+        }
+
+        return clampedEngineDepth(depth)
     }
 
     /// UI tests can provide a deterministic starting evaluation without
@@ -241,6 +260,10 @@ final class GameViewModel: ObservableObject {
         min(maximumSuggestionArrowCount, max(0, count))
     }
 
+    private static func clampedEngineDepth(_ depth: Int) -> Int {
+        min(maximumEngineDepth, max(minimumEngineDepth, depth))
+    }
+
     /// UI tests use scripted opponent replies so interaction tests are not
     /// coupled to Stockfish startup time or changing engine choices.
     static var usesScriptedUITestEngine: Bool {
@@ -270,6 +293,43 @@ final class GameViewModel: ObservableObject {
     /// Updates whether the visible evaluation bar reference component is shown.
     func setEvaluationBarVisible(_ showsEvaluationBar: Bool) {
         self.showsEvaluationBar = showsEvaluationBar
+    }
+
+    /// Updates the Stockfish search depth used for future searches.
+    func setEngineDepth(_ depth: Int) {
+        let clampedDepth = Self.clampedEngineDepth(depth)
+        guard clampedDepth != engineDepth else { return }
+
+        engineDepth = clampedDepth
+
+        guard suggestionArrowCount > 0,
+              boardModel.game.position.state.turn == playerColor
+        else {
+            return
+        }
+
+        guard activeSearchPurpose != .opponentMove else { return }
+
+        if Self.usesScriptedUITestEngine {
+            applyScriptedSuggestionArrows()
+            return
+        }
+
+        let request = EngineSearchRequest(
+            purpose: .suggestions,
+            fen: fenSerializer.fen(from: boardModel.game.position),
+            sideToMove: boardModel.game.position.state.turn,
+            multiPVCount: Self.maximumSuggestionArrowCount
+        )
+
+        if activeSearchPurpose == .suggestions {
+            cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
+        } else {
+            suggestedMovesByRank.removeAll()
+            suggestedMovesPositionFEN = nil
+            boardModel.clearArrows()
+            startOrQueueEngineSearch(request)
+        }
     }
 
     /// Updates how many engine-supplied move suggestion arrows the board shows.

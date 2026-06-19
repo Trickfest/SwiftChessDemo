@@ -30,12 +30,11 @@ struct GameView: View {
     private static let regularEvaluationSpacing: CGFloat = 10
     private static let compactEvaluationSpacing: CGFloat = 8
 
-    /// Creates the view model with the chosen side, engine depth, and board styling.
-    init(playerColor: PieceColor, engineDepth: Int, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
+    /// Creates the view model with the chosen side and board styling.
+    init(playerColor: PieceColor, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
         _viewModel = StateObject(
             wrappedValue: GameViewModel(
                 playerColor: playerColor,
-                engineDepth: engineDepth,
                 pieceSet: pieceSet,
                 boardTheme: boardTheme
             )
@@ -260,6 +259,7 @@ struct GameView: View {
             + "Board: \(viewModel.boardTheme.displayName), "
             + "Coordinates: \(coordinateState), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
+            + "Depth: \(viewModel.engineDepth), "
             + "FEN: \(viewModel.positionFEN)"
     }
 
@@ -289,6 +289,7 @@ struct GameView: View {
                 VStack(spacing: 10) {
                     pieceSetControl
                     boardThemeControl
+                    engineDepthControl
                     suggestionArrowsControl
                     coordinateLabelsToggle
                     gameStatusToggle
@@ -309,6 +310,7 @@ struct GameView: View {
             }
 
             suggestionArrowsControl
+            engineDepthControl
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -433,6 +435,25 @@ struct GameView: View {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("Game.suggestionCountPicker")
         .accessibilityValue(suggestionArrowOptionTitle(for: viewModel.suggestionArrowCount))
+    }
+
+    private var engineDepthControl: some View {
+        Stepper(
+            value: Binding(
+                get: { viewModel.engineDepth },
+                set: { viewModel.setEngineDepth($0) }
+            ),
+            in: GameViewModel.minimumEngineDepth...GameViewModel.maximumEngineDepth
+        ) {
+            displayControlLabel(
+                title: "Depth",
+                value: "\(viewModel.engineDepth)",
+                systemImage: "speedometer"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("Game.engineDepthStepper")
+        .accessibilityValue("\(viewModel.engineDepth)")
     }
 
     private var coordinateLabelsToggle: some View {

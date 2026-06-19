@@ -51,6 +51,8 @@ for a release.
   automatic draws, and claimable draw rules.
 - Moved piece-set and board-theme selection off the launch screen and onto the
   game screen so display options can be reviewed without resigning.
+- Moved the Stockfish depth control onto the game screen so the depth can be
+  changed between searches during play.
 - Added a short opponent "thinking" pause before requesting a Stockfish move, so
   the player's latest source/destination highlight remains visible before the
   engine reply updates the board.
@@ -65,8 +67,7 @@ for a release.
   hand-built UCI strings.
 - Separated opponent-move searches from suggestion-analysis searches so
   analysis output can render arrows without applying a move.
-- Raised the setup-screen Stockfish depth control's maximum value from 16 to
-  30.
+- Raised the Stockfish depth control's maximum value from 16 to 30.
 - Changed the in-game suggestions selector to filter cached three-line MultiPV
   analysis instead of changing the Stockfish MultiPV count for each visible
   arrow count.
