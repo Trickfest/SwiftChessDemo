@@ -30,13 +30,19 @@ struct GameView: View {
     private static let regularEvaluationSpacing: CGFloat = 10
     private static let compactEvaluationSpacing: CGFloat = 8
 
-    /// Creates the view model with the chosen side and board styling.
-    init(playerColor: PieceColor, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
+    /// Creates the view model with the chosen side, board styling, and optional scenario.
+    init(
+        playerColor: PieceColor,
+        pieceSet: ChessPieceSet,
+        boardTheme: ChessBoardTheme,
+        scenario: GameScenario? = nil
+    ) {
         _viewModel = StateObject(
             wrappedValue: GameViewModel(
                 playerColor: playerColor,
                 pieceSet: pieceSet,
-                boardTheme: boardTheme
+                boardTheme: boardTheme,
+                scenario: scenario
             )
         )
     }
@@ -260,6 +266,7 @@ struct GameView: View {
             + "Coordinates: \(coordinateState), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Depth: \(viewModel.engineDepth), "
+            + viewModel.scenarioAccessibilityValue
             + "FEN: \(viewModel.positionFEN)"
     }
 

@@ -1,0 +1,11 @@
+{
+  "id": "fools-mate",
+  "title": "Fool's Mate",
+  "pgnResource": "fools-mate.pgn",
+  "playbackMode": "automaticReplay",
+  "initialPerspective": "white",
+  "stopAfterPly": 4,
+  "expectedStatus": "checkmate",
+  "expectedWinner": "black",
+  "notes": "Replays the shortest common checkmate to verify terminal status and move-list updates without Stockfish."
+}

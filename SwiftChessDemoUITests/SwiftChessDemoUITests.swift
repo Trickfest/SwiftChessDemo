@@ -487,6 +487,88 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
     }
 
+    func testGameScenarioReplayRunsPGNToCheckmate() throws {
+        let app = scenarioTestApplication(id: "fools-mate")
+        app.launch()
+
+        try requireElement(
+            app.staticTexts["Setup.scenarioTitle"].firstMatch,
+            named: "scenario setup title"
+        )
+        XCTAssertEqual(app.staticTexts["Setup.scenarioTitle"].firstMatch.label, "Fool's Mate")
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario: fools-mate",
+            in: app,
+            named: "fool's mate scenario marker"
+        )
+        try waitForGameBoardState(
+            containing: "Scenario ply: 4/4",
+            in: app,
+            named: "fool's mate replay completion",
+            timeout: 10
+        )
+        try waitForGameBoardState(
+            containing: "Scenario status: Checkmate, Black wins",
+            in: app,
+            named: "fool's mate checkmate status"
+        )
+
+        let finalMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.4"].firstMatch,
+            named: "fool's mate final move"
+        )
+        XCTAssertEqual(finalMove.value as? String, "d8h4")
+        XCTAssertTrue(finalMove.label.contains("Black Qh4#"))
+
+        let alert = try requireElement(app.alerts["Checkmate"].firstMatch, named: "checkmate alert")
+        XCTAssertTrue(alert.staticTexts["Black wins"].exists)
+    }
+
+    func testGameScenarioReplayStartsFromTerminalStalemate() throws {
+        let app = scenarioTestApplication(id: "stalemate-position")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario: stalemate-position",
+            in: app,
+            named: "stalemate scenario marker"
+        )
+        try waitForGameBoardState(
+            containing: "Scenario ply: 0/0",
+            in: app,
+            named: "stalemate scenario ply"
+        )
+        try waitForGameBoardState(
+            containing: "Scenario status: Draw, Stalemate",
+            in: app,
+            named: "stalemate scenario status"
+        )
+
+        let alert = try requireElement(app.alerts["Stalemate"].firstMatch, named: "stalemate alert")
+        XCTAssertTrue(alert.staticTexts["Draw"].exists)
+    }
+
+    func testMissingGameScenarioReportsSetupError() throws {
+        let app = scenarioTestApplication(id: "missing-scenario")
+        app.launch()
+
+        try requireElement(
+            app.staticTexts["Setup.scenarioError"].firstMatch,
+            named: "scenario load error"
+        )
+        let detail = try requireElement(
+            app.staticTexts["Setup.scenarioErrorDetail"].firstMatch,
+            named: "scenario load error detail"
+        )
+        XCTAssertTrue(detail.label.contains("missing-scenario.json"))
+        XCTAssertFalse(app.buttons["Start Game"].isEnabled)
+    }
+
     @discardableResult
     private func scrollUntilHittable(
         _ element: XCUIElement,
@@ -579,6 +661,13 @@ final class SwiftChessDemoUITests: XCTestCase {
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "1.0"
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE"] = "1"
+        return app
+    }
+
+    private func scenarioTestApplication(id: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_SCENARIO"] = id
+        app.launchEnvironment["SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY"] = "0"
         return app
     }
 

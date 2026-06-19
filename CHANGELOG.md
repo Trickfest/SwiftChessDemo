@@ -38,6 +38,10 @@ for a release.
   and toggling.
 - Added SwiftChessDemo UI coverage for suggestion-arrow count selection,
   rendered arrow identifiers, and refresh after an opponent reply.
+- Added PGN-backed scenario replay fixtures that can run deterministic game
+  states without Stockfish.
+- Added SwiftChessDemo UI coverage for scenario replay checkmate, terminal
+  FEN-backed stalemate, and missing-scenario setup errors.
 - Added SwiftChessDemo UI tests that exercise four full moves from both white
   and black perspectives, using a test-only scripted engine path for
   deterministic opponent replies.
@@ -71,6 +75,9 @@ for a release.
 - Changed the in-game suggestions selector to filter cached three-line MultiPV
   analysis instead of changing the Stockfish MultiPV count for each visible
   arrow count.
+- Isolated deterministic non-Stockfish moves behind a `GameMoveProvider`
+  abstraction so scenario replay and legacy scripted UI tests do not live
+  directly in `GameViewModel`.
 
 ### Fixed
 

@@ -1,0 +1,11 @@
+[Event "SwiftChessDemo Scenario"]
+[Site "Local"]
+[Date "2026.06.19"]
+[Round "-"]
+[White "Scenario White"]
+[Black "Scenario Black"]
+[SetUp "1"]
+[FEN "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"]
+[Result "1/2-1/2"]
+
+1/2-1/2

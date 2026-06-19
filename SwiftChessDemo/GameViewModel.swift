@@ -112,10 +112,16 @@ final class GameViewModel: ObservableObject {
     private let moveRecordBuilder = ChessMoveRecordBuilder()
     /// The persistent Stockfish engine for this game screen.
     private var engine: SFEngine?
+    /// Optional deterministic move provider used for scenarios and legacy UI tests.
+    private let moveProvider: GameMoveProvider?
+    /// Scenario being replayed, if this game was launched in scenario mode.
+    private let scenario: GameScenario?
     /// Task used to time out engine searches.
     private var engineTimeoutTask: Task<Void, Never>?
     /// Work item used to wait briefly before starting an engine search.
     private var engineRequestDelayWorkItem: DispatchWorkItem?
+    /// Work item used to advance automatic scenario replay.
+    private var scenarioReplayWorkItem: DispatchWorkItem?
     /// Token used to ignore stale engine responses after cancellation.
     private var searchToken = UUID()
     /// Current purpose for the running engine search.
@@ -138,23 +144,41 @@ final class GameViewModel: ObservableObject {
     private var isEngineThinking = false
     /// Cosmetic delay before asking Stockfish for a reply, so the demo feels like the engine is thinking.
     private let engineReplyDelaySeconds: TimeInterval
+    /// Delay between moves during automatic scenario replay.
+    private let scenarioReplayDelaySeconds: TimeInterval
 
-    init(playerColor: PieceColor, pieceSet: ChessPieceSet, boardTheme: ChessBoardTheme) {
+    init(
+        playerColor: PieceColor,
+        pieceSet: ChessPieceSet,
+        boardTheme: ChessBoardTheme,
+        scenario: GameScenario? = nil
+    ) {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
+        self.scenario = scenario
+        if let scenario {
+            self.moveProvider = ScenarioReplayMoveProvider(scenario: scenario)
+        } else if Self.usesScriptedUITestEngine {
+            self.moveProvider = ScriptedUITestMoveProvider(playerColor: playerColor)
+        } else {
+            self.moveProvider = nil
+        }
         // Store the Stockfish depth so future searches use the current setting.
         self.engineDepth = Self.initialEngineDepth
         // UI tests can lower the cosmetic delay while normal demo launches keep it.
         self.engineReplyDelaySeconds = Self.initialEngineReplyDelaySeconds
+        self.scenarioReplayDelaySeconds = Self.initialScenarioReplayDelaySeconds
         // Keep the selected ChessUI artwork available for menus and board updates.
         self.pieceSet = pieceSet
         // Keep the selected ChessUI board theme available for menus and board updates.
         self.boardTheme = boardTheme
-        // Standard initial chess position in FEN format.
-        let initialFen = Position.standardStartingFEN
+        // Use the scenario's starting position when replaying PGN fixtures.
+        let initialPosition = scenario?.initialPosition ?? Position.standard
+        let initialFen = FENSerializer().fen(from: initialPosition)
+        let initialGame = Game(position: initialPosition)
         self.positionFEN = initialFen
-        self.gameStatus = .ongoing(drawClaims: [])
-        self.sideToMove = Position.standard.state.turn
+        self.gameStatus = initialGame.status
+        self.sideToMove = initialPosition.state.turn
         self.evaluation = Self.initialEvaluation
         self.suggestionArrowCount = Self.initialSuggestionArrowCount
         // ChessUI owns the board and perspective rendering.
@@ -166,7 +190,10 @@ final class GameViewModel: ObservableObject {
         )
         // Let ChessUI report only legal moves for the side to move; the view
         // model still gates those moves to the human player's turn.
-        self.boardModel.interactionMode = .legalMovesOnly
+        self.boardModel.interactionMode = self.moveProvider?.isAutomaticReplay == true
+            ? .readOnly
+            : .legalMovesOnly
+        self.boardModel.game = initialGame
     }
 
     /// Normal app runs use a visible thinking pause; UI tests can override it
@@ -177,6 +204,18 @@ final class GameViewModel: ObservableObject {
               let delay = TimeInterval(delayValue)
         else {
             return 2.5
+        }
+
+        return max(delay, 0)
+    }
+
+    /// Scenario replay can run quickly in UI tests while staying visible in manual runs.
+    private static var initialScenarioReplayDelaySeconds: TimeInterval {
+        let environment = ProcessInfo.processInfo.environment
+        guard let delayValue = environment["SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY"],
+              let delay = TimeInterval(delayValue)
+        else {
+            return 0.45
         }
 
         return max(delay, 0)
@@ -272,7 +311,16 @@ final class GameViewModel: ObservableObject {
 
     /// Test-only controls are opt-in through the UI test launch environment.
     var showsUITestMoveControls: Bool {
-        Self.usesScriptedUITestEngine
+        moveProvider?.showsUITestMoveControls == true
+    }
+
+    /// Scenario state appended to the board accessibility marker for UI tests.
+    var scenarioAccessibilityValue: String {
+        guard let scenario else { return "" }
+
+        return "Scenario: \(scenario.id), "
+            + "Scenario ply: \(moveRecords.count)/\(scenario.targetPly), "
+            + "Scenario status: \(statusAccessibilityDescription(for: gameStatus)), "
     }
 
     /// Updates whether ChessUI draws rank and file coordinate labels.
@@ -310,8 +358,8 @@ final class GameViewModel: ObservableObject {
 
         guard activeSearchPurpose != .opponentMove else { return }
 
-        if Self.usesScriptedUITestEngine {
-            applyScriptedSuggestionArrows()
+        if let moveProvider {
+            applyMoveProviderSuggestionArrows(moveProvider)
             return
         }
 
@@ -360,6 +408,10 @@ final class GameViewModel: ObservableObject {
         // Guard so repeated `onAppear` calls do not restart the engine.
         guard !didStart else { return }
         didStart = true
+        if moveProvider?.isAutomaticReplay == true {
+            startAutomaticReplay()
+            return
+        }
         // If the user chose black, the engine makes the first move.
         if playerColor == .black {
             scheduleEngineMove()
@@ -370,6 +422,7 @@ final class GameViewModel: ObservableObject {
 
     /// Receives a move from ChessUI when the user interacts with the UI.
     func handleUserMove(move: Move, isLegal: Bool) {
+        guard moveProvider?.isAutomaticReplay != true else { return }
         // Ignore illegal gestures, and ignore moves when it's not the user's turn.
         guard isLegal else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
@@ -386,7 +439,7 @@ final class GameViewModel: ObservableObject {
     /// Test-only move entry point used when simulator coordinate taps are too
     /// brittle for a UI smoke test.
     func performUITestMove(_ coordinateMove: String) {
-        guard Self.usesScriptedUITestEngine,
+        guard moveProvider?.showsUITestMoveControls == true,
               let move = try? Move(string: coordinateMove)
         else {
             return
@@ -422,6 +475,57 @@ final class GameViewModel: ObservableObject {
     /// Called when the view disappears; ensures background work stops.
     func cleanup() {
         stopEngineIfNeeded()
+    }
+
+    /// Starts automatic scenario playback from the current position.
+    private func startAutomaticReplay() {
+        boardModel.clearArrows()
+        if checkForGameEnd() { return }
+        scheduleAutomaticReplayMove()
+    }
+
+    /// Schedules the next automatic scenario move.
+    private func scheduleAutomaticReplayMove() {
+        guard moveProvider?.isAutomaticReplay == true else { return }
+        scenarioReplayWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.scenarioReplayWorkItem = nil
+            self.applyNextAutomaticReplayMove()
+        }
+
+        scenarioReplayWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + scenarioReplayDelaySeconds, execute: workItem)
+    }
+
+    /// Applies one scenario move through the same path used by live gameplay.
+    private func applyNextAutomaticReplayMove() {
+        guard let moveProvider, moveProvider.isAutomaticReplay else { return }
+        if checkForGameEnd() { return }
+
+        guard scenario.map({ moveRecords.count < $0.targetPly }) ?? false else {
+            return
+        }
+
+        guard let move = moveProvider.nextMove(for: boardModel.game, ply: moveRecords.count) else {
+            endGame(title: "Scenario Error", message: "The scenario did not provide a legal move.")
+            return
+        }
+
+        guard applyMove(
+            move: move,
+            failureTitle: "Scenario Error",
+            failureMessage: "The scenario move is not legal in the current position."
+        ) else {
+            return
+        }
+
+        if checkForGameEnd() { return }
+
+        if scenario.map({ moveRecords.count < $0.targetPly }) == true {
+            scheduleAutomaticReplayMove()
+        }
     }
 
     /// Applies a legal move to the ChessCore game and updates the board UI with FEN.
@@ -482,8 +586,8 @@ final class GameViewModel: ObservableObject {
 
         boardModel.clearArrows()
 
-        if Self.usesScriptedUITestEngine {
-            applyScriptedEngineMove()
+        if let moveProvider {
+            applyMoveProviderOpponentMove(moveProvider)
             return
         }
 
@@ -496,23 +600,9 @@ final class GameViewModel: ObservableObject {
         startOrQueueEngineSearch(request)
     }
 
-    /// Applies a deterministic legal opponent move for UI tests.
-    private func applyScriptedEngineMove() {
-        let candidateMoves: [String]
-        switch playerColor.opposite {
-        case .white:
-            candidateMoves = ["e2e4", "g1f3", "f1c4", "d2d3"]
-        case .black:
-            candidateMoves = ["e7e5", "b8c6", "g8f6", "f8c5"]
-        }
-
-        let legalMoves = boardModel.game.legalMoves
-        let scriptedMove = candidateMoves
-            .compactMap { try? Move(string: $0) }
-            .first { legalMoves.contains($0) }
-        let move = scriptedMove ?? legalMoves.first
-
-        guard let move else {
+    /// Applies a deterministic provider move for legacy UI tests.
+    private func applyMoveProviderOpponentMove(_ moveProvider: GameMoveProvider) {
+        guard let move = moveProvider.nextMove(for: boardModel.game, ply: moveRecords.count) else {
             endGame(title: "Draw", message: "No legal moves remain.")
             return
         }
@@ -672,6 +762,10 @@ final class GameViewModel: ObservableObject {
         // Cancel any cosmetic delayed engine request.
         engineRequestDelayWorkItem?.cancel()
         engineRequestDelayWorkItem = nil
+        // Cancel automatic scenario replay, if active.
+        scenarioReplayWorkItem?.cancel()
+        scenarioReplayWorkItem = nil
+        moveProvider?.cancel()
 
         if let engine {
             // Stop off the main thread to avoid blocking UI.
@@ -688,7 +782,7 @@ final class GameViewModel: ObservableObject {
     private func checkForGameEnd() -> Bool {
         switch boardModel.game.status {
         case .checkmate(let winner):
-            let message = winner == playerColor ? "You win" : "Stockfish wins"
+            let message = checkmateMessage(winner: winner)
             endGame(title: "Checkmate", message: message)
             return true
 
@@ -734,8 +828,8 @@ final class GameViewModel: ObservableObject {
 
         guard activeSearchPurpose != .opponentMove else { return }
 
-        if Self.usesScriptedUITestEngine {
-            applyScriptedSuggestionArrows()
+        if let moveProvider {
+            applyMoveProviderSuggestionArrows(moveProvider)
         } else {
             requestSuggestionArrows()
         }
@@ -854,8 +948,8 @@ final class GameViewModel: ObservableObject {
         startEngineSearch(request)
     }
 
-    /// Creates deterministic suggestion arrows for simulator UI tests.
-    private func applyScriptedSuggestionArrows() {
+    /// Creates deterministic suggestion arrows from a non-Stockfish provider.
+    private func applyMoveProviderSuggestionArrows(_ moveProvider: GameMoveProvider) {
         guard suggestionArrowCount > 0,
               boardModel.game.position.state.turn == playerColor
         else {
@@ -863,22 +957,10 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        let preferredMoves: [String]
-        switch playerColor {
-        case .white:
-            preferredMoves = ["e2e4", "g1f3", "f1c4", "d2d4", "d2d3", "c2c4"]
-        case .black:
-            preferredMoves = ["e7e5", "g8f6", "d7d5", "f8c5", "b8c6", "c7c5"]
-        }
-
-        let legalMoves = boardModel.game.legalMoves
-        var rankedMoves = preferredMoves
-            .compactMap { try? Move(string: $0) }
-            .filter { legalMoves.contains($0) }
-
-        for move in legalMoves where !rankedMoves.contains(move) {
-            rankedMoves.append(move)
-        }
+        let rankedMoves = moveProvider.suggestionMoves(
+            for: boardModel.game,
+            maxCount: Self.maximumSuggestionArrowCount
+        )
 
         suggestedMovesByRank = Dictionary(
             uniqueKeysWithValues: rankedMoves
@@ -999,4 +1081,36 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// User-facing checkmate message for live games and scripted scenarios.
+    private func checkmateMessage(winner: PieceColor) -> String {
+        if moveProvider?.isAutomaticReplay == true {
+            return "\(winner.displayName) wins"
+        }
+
+        return winner == playerColor ? "You win" : "Stockfish wins"
+    }
+
+    /// Accessibility-friendly status text used by scenario UI tests.
+    private func statusAccessibilityDescription(for status: GameStatus) -> String {
+        switch status {
+        case .ongoing:
+            return "Ongoing"
+        case .checkmate(let winner):
+            return "Checkmate, \(winner.displayName) wins"
+        case .draw(let reason):
+            return "Draw, \(drawTitle(for: reason))"
+        }
+    }
+
+}
+
+private extension PieceColor {
+    var displayName: String {
+        switch self {
+        case .white:
+            return "White"
+        case .black:
+            return "Black"
+        }
+    }
 }
