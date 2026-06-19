@@ -20,9 +20,13 @@ for a release.
   `ChessMoveRecord`.
 - Added optional in-game evaluation display backed by `ChessEvaluationBar` and
   parsed Stockfish `info score` output.
+- Added optional in-game move suggestion arrows backed by ChessUI
+  `ChessBoardArrow` rendering and Stockfish MultiPV analysis.
 - Added in-game display toggles for showing or hiding the status display and
   move list.
 - Added an in-game display toggle for showing or hiding the evaluation bar.
+- Added an in-game suggestions selector for showing zero, one, two, or three
+  engine suggestion arrows.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI piece set is
   selectable during a game.
 - Added SwiftChessDemo UI tests that verify every bundled ChessUI board theme is
@@ -32,6 +36,8 @@ for a release.
   the new display toggles.
 - Added SwiftChessDemo UI coverage for deterministic evaluation-bar rendering
   and toggling.
+- Added SwiftChessDemo UI coverage for suggestion-arrow count selection,
+  rendered arrow identifiers, and refresh after an opponent reply.
 - Added SwiftChessDemo UI tests that exercise four full moves from both white
   and black perspectives, using a test-only scripted engine path for
   deterministic opponent replies.
@@ -57,9 +63,19 @@ for a release.
 - Changed engine-input handling to use SwiftChessTools' `ChessUCI` command
   formatter for Stockfish handshake, position, and search commands instead of
   hand-built UCI strings.
+- Separated opponent-move searches from suggestion-analysis searches so
+  analysis output can render arrows without applying a move.
+- Raised the setup-screen Stockfish depth control's maximum value from 16 to
+  30.
+- Changed the in-game suggestions selector to filter cached three-line MultiPV
+  analysis instead of changing the Stockfish MultiPV count for each visible
+  arrow count.
 
 ### Fixed
 
+- Fixed suggestion-arrow engine analysis so changing suggestion counts and
+  moving while analysis is active no longer starts overlapping embedded
+  Stockfish instances.
 - Preserved ChessCore move history and repetition state after animated board
   updates so draw status remains accurate while ChessUI renders from FEN.
 - Corrected delayed engine-request cleanup so pending opponent replies are

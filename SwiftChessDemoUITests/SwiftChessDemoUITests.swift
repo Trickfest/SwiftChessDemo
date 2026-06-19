@@ -348,6 +348,122 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
     }
 
+    func testGameSuggestionArrowPickerControlsRenderedArrows() throws {
+        let app = moveSmokeTestApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let picker = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.suggestionCountPicker"].firstMatch,
+            named: "suggestion count picker",
+            in: app
+        )
+        try waitForElementValue(picker, expectedValue: "Off", named: "suggestion count picker")
+
+        try select("3 arrows", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "3 arrows", named: "suggestion count picker")
+
+        let bestArrow = try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "best suggestion arrow"
+        )
+        XCTAssertTrue(bestArrow.label.contains("Best suggestion"))
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
+            named: "second suggestion arrow"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
+            named: "third suggestion arrow"
+        )
+
+        try select("1 arrow", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "1 arrow", named: "suggestion count picker")
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "remaining best suggestion arrow"
+        )
+        try waitForElementToDisappear(
+            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
+            named: "second suggestion arrow"
+        )
+        try waitForElementToDisappear(
+            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
+            named: "third suggestion arrow"
+        )
+
+        try select("3 arrows", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "3 arrows", named: "suggestion count picker")
+        let restoredBestArrow = try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "restored best suggestion arrow"
+        )
+        XCTAssertTrue(restoredBestArrow.label.contains("Best suggestion"))
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
+            named: "restored second suggestion arrow"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
+            named: "restored third suggestion arrow"
+        )
+
+        try select("Off", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "Off", named: "suggestion count picker")
+        try waitForElementToDisappear(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "best suggestion arrow"
+        )
+    }
+
+    func testGameSuggestionArrowsRefreshAfterOpponentReply() throws {
+        let app = moveSmokeTestApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT"] = "2"
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "initial best suggestion arrow"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
+            named: "initial second suggestion arrow"
+        )
+
+        let initialPosition = try boardValue(in: app)
+        try tapMove("e2e4", in: app)
+        let afterWhiteMove = try waitForBoardTurn(
+            .black,
+            from: initialPosition,
+            in: app,
+            named: "White opening move"
+        )
+
+        try waitForElementToDisappear(
+            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
+            named: "stale opening suggestion arrow"
+        )
+
+        _ = try waitForBoardTurn(
+            .white,
+            from: afterWhiteMove,
+            in: app,
+            named: "Black scripted reply"
+        )
+
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
+            named: "refreshed best suggestion arrow"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.arrow.f1.c4"].firstMatch,
+            named: "refreshed second suggestion arrow"
+        )
+    }
+
     @discardableResult
     private func scrollUntilHittable(
         _ element: XCUIElement,
@@ -365,7 +481,9 @@ final class SwiftChessDemoUITests: XCTestCase {
             }
 
             if scrollView.exists {
-                scrollView.swipeUp()
+                let start = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.82))
+                let end = scrollView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28))
+                start.press(forDuration: 0.01, thenDragTo: end)
             } else {
                 app.swipeUp()
             }
@@ -398,6 +516,26 @@ final class SwiftChessDemoUITests: XCTestCase {
         } while Date() < deadline
 
         XCTAssertEqual(lastValue, expectedValue, "\(name) value", file: file, line: line)
+    }
+
+    private func waitForElementToDisappear(
+        _ element: XCUIElement,
+        named name: String,
+        timeout: TimeInterval = 3,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+
+        repeat {
+            if !element.exists {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        XCTAssertFalse(element.exists, "\(name) should not exist", file: file, line: line)
     }
 
     private func assertEvaluationBarMatchesBoard(

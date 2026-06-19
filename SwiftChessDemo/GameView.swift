@@ -46,6 +46,7 @@ struct GameView: View {
         ScrollView {
             gameLayout
                 .padding()
+                .padding(.bottom, 32)
         }
         .accessibilityIdentifier("Game.scrollView")
         .navigationTitle("Game")
@@ -258,6 +259,7 @@ struct GameView: View {
         return "Pieces: \(viewModel.pieceSet.displayName), "
             + "Board: \(viewModel.boardTheme.displayName), "
             + "Coordinates: \(coordinateState), "
+            + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "FEN: \(viewModel.positionFEN)"
     }
 
@@ -287,6 +289,7 @@ struct GameView: View {
                 VStack(spacing: 10) {
                     pieceSetControl
                     boardThemeControl
+                    suggestionArrowsControl
                     coordinateLabelsToggle
                     gameStatusToggle
                     moveListToggle
@@ -304,6 +307,8 @@ struct GameView: View {
                 pieceSetControl
                 boardThemeControl
             }
+
+            suggestionArrowsControl
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -408,6 +413,26 @@ struct GameView: View {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("Game.boardThemePicker")
         .accessibilityValue(viewModel.boardTheme.displayName)
+    }
+
+    private var suggestionArrowsControl: some View {
+        Menu {
+            ForEach(0...3, id: \.self) { count in
+                Button(suggestionArrowOptionTitle(for: count)) {
+                    viewModel.setSuggestionArrowCount(count)
+                }
+            }
+        } label: {
+            displayControlLabel(
+                title: "Suggestions",
+                value: suggestionArrowOptionTitle(for: viewModel.suggestionArrowCount),
+                systemImage: "arrow.up.right"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.suggestionCountPicker")
+        .accessibilityValue(suggestionArrowOptionTitle(for: viewModel.suggestionArrowCount))
     }
 
     private var coordinateLabelsToggle: some View {
@@ -556,6 +581,17 @@ struct GameView: View {
         .background {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.08))
+        }
+    }
+
+    private func suggestionArrowOptionTitle(for count: Int) -> String {
+        switch count {
+        case 0:
+            return "Off"
+        case 1:
+            return "1 arrow"
+        default:
+            return "\(count) arrows"
         }
     }
 }

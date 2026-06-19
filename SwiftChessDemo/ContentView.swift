@@ -36,6 +36,9 @@ private enum PlayerSide: String, CaseIterable, Identifiable {
 
 /// Launch screen where the user configures the demo before starting a game.
 struct ContentView: View {
+    /// Highest Stockfish search depth exposed by the demo setup UI.
+    private static let maximumEngineDepth = 30
+
     /// Which side the user has selected in the segmented control.
     @State private var playerSide: PlayerSide = .white
     /// Depth for Stockfish search; higher values are slower but stronger.
@@ -51,7 +54,7 @@ struct ContentView: View {
             return 8
         }
 
-        return min(max(depth, 1), 16)
+        return min(max(depth, 1), maximumEngineDepth)
     }
 
     var body: some View {
@@ -68,7 +71,7 @@ struct ContentView: View {
                 .accessibilityIdentifier("Setup.sidePicker")
 
                 // Show Stockfish depth with a stepper so users can experiment.
-                Stepper(value: $depth, in: 1...16) {
+                Stepper(value: $depth, in: 1...Self.maximumEngineDepth) {
                     HStack {
                         Text("Depth")
                         Spacer()

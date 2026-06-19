@@ -43,6 +43,21 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Distinguishes engine searches that should apply a move from analysis
+    /// searches that only produce board arrows.
+    private enum EngineSearchPurpose {
+        case opponentMove
+        case suggestions
+    }
+
+    /// One engine request against one board position.
+    private struct EngineSearchRequest {
+        let purpose: EngineSearchPurpose
+        let fen: String
+        let sideToMove: PieceColor
+        let multiPVCount: Int
+    }
+
     /// Drives alert presentation in the view.
     @Published var activeAlert: GameAlert?
     /// ChessUI piece artwork currently rendered by the board.
@@ -69,6 +84,8 @@ final class GameViewModel: ObservableObject {
     @Published var showsMoveList = true
     /// Controls whether the game screen shows ChessUI's evaluation bar.
     @Published var showsEvaluationBar = true
+    /// Number of app-supplied engine suggestion arrows shown on the board.
+    @Published private(set) var suggestionArrowCount: Int
     /// ChessCore status mirrored for SwiftUI rendering.
     @Published private(set) var gameStatus: GameStatus
     /// Side to move mirrored for SwiftUI rendering.
@@ -93,7 +110,7 @@ final class GameViewModel: ObservableObject {
     private let fenSerializer = FENSerializer()
     /// Builds SAN-backed move-list records from pre-move game state.
     private let moveRecordBuilder = ChessMoveRecordBuilder()
-    /// The running Stockfish engine instance, if any.
+    /// The persistent Stockfish engine for this game screen.
     private var engine: SFEngine?
     /// Task used to time out engine searches.
     private var engineTimeoutTask: Task<Void, Never>?
@@ -101,6 +118,20 @@ final class GameViewModel: ObservableObject {
     private var engineRequestDelayWorkItem: DispatchWorkItem?
     /// Token used to ignore stale engine responses after cancellation.
     private var searchToken = UUID()
+    /// Current purpose for the running engine search.
+    private var activeSearchPurpose: EngineSearchPurpose?
+    /// Side to move for the current engine search, used to normalize scores.
+    private var activeSearchSideToMove: PieceColor?
+    /// FEN for the current engine search.
+    private var activeSearchFEN: String?
+    /// Search to start after the current engine search stops or returns bestmove.
+    private var pendingSearchRequest: EngineSearchRequest?
+    /// True when an active suggestion search has been stopped and its late output should be ignored.
+    private var ignoresActiveSuggestionOutput = false
+    /// Latest first move for each one-based MultiPV rank.
+    private var suggestedMovesByRank: [Int: Move] = [:]
+    /// FEN for the cached suggestion ranks.
+    private var suggestedMovesPositionFEN: String?
     /// Ensures we only start the engine once when the view appears.
     private var didStart = false
     /// Quick flag to prevent parallel searches.
@@ -125,6 +156,7 @@ final class GameViewModel: ObservableObject {
         self.gameStatus = .ongoing(drawClaims: [])
         self.sideToMove = Position.standard.state.turn
         self.evaluation = Self.initialEvaluation
+        self.suggestionArrowCount = Self.initialSuggestionArrowCount
         // ChessUI owns the board and perspective rendering.
         self.boardModel = ChessBoardModel(
             fen: initialFen,
@@ -161,6 +193,21 @@ final class GameViewModel: ObservableObject {
         return evaluation(fromEnvironmentValue: value) ?? .unavailable
     }
 
+    /// UI tests can start with suggestions visible without tapping the menu.
+    private static var initialSuggestionArrowCount: Int {
+        let environment = ProcessInfo.processInfo.environment
+        guard let value = environment["SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT"],
+              let count = Int(value)
+        else {
+            return 0
+        }
+
+        return clampedSuggestionArrowCount(count)
+    }
+
+    /// Highest number of ranked engine suggestion lines the demo requests.
+    private static let maximumSuggestionArrowCount = 3
+
     /// UI tests can simulate an engine `info score` update before a scripted best move is applied.
     private static var scriptedEvaluationBeforeEngineReply: ChessEvaluation? {
         guard let value = ProcessInfo.processInfo.environment["SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_EVALUATION_BEFORE_REPLY"] else {
@@ -188,6 +235,10 @@ final class GameViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    private static func clampedSuggestionArrowCount(_ count: Int) -> Int {
+        min(maximumSuggestionArrowCount, max(0, count))
     }
 
     /// UI tests use scripted opponent replies so interaction tests are not
@@ -221,6 +272,24 @@ final class GameViewModel: ObservableObject {
         self.showsEvaluationBar = showsEvaluationBar
     }
 
+    /// Updates how many engine-supplied move suggestion arrows the board shows.
+    func setSuggestionArrowCount(_ count: Int) {
+        let clampedCount = Self.clampedSuggestionArrowCount(count)
+        guard clampedCount != suggestionArrowCount else { return }
+
+        suggestionArrowCount = clampedCount
+        if clampedCount == 0 {
+            if activeSearchPurpose == .suggestions {
+                cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
+            } else {
+                boardModel.clearArrows()
+            }
+        } else {
+            refreshSuggestionArrows()
+            scheduleSuggestionSearchIfNeeded()
+        }
+    }
+
     /// Selects a move-list record without changing the board position.
     func selectMoveRecord(_ record: ChessMoveRecord) {
         selectedMovePly = record.ply
@@ -234,6 +303,8 @@ final class GameViewModel: ObservableObject {
         // If the user chose black, the engine makes the first move.
         if playerColor == .black {
             scheduleEngineMove()
+        } else {
+            scheduleSuggestionSearchIfNeeded()
         }
     }
 
@@ -242,6 +313,8 @@ final class GameViewModel: ObservableObject {
         // Ignore illegal gestures, and ignore moves when it's not the user's turn.
         guard isLegal else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
+        // A real user move invalidates analysis arrows for the previous position.
+        cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
         // Apply the move in ChessCore and refresh the board UI.
         guard applyMove(move: move) else { return }
         // Stop here if the move ended the game.
@@ -342,71 +415,25 @@ final class GameViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + engineReplyDelaySeconds, execute: workItem)
     }
 
-    /// Spawns a Stockfish search for the current position.
+    /// Requests a Stockfish reply for the current position.
     private func requestEngineMove() {
-        // Avoid overlapping searches which can race UI updates.
-        guard !isEngineThinking else { return }
         // Only search when it is the engine's turn.
         guard boardModel.game.position.state.turn == playerColor.opposite else { return }
+
+        boardModel.clearArrows()
 
         if Self.usesScriptedUITestEngine {
             applyScriptedEngineMove()
             return
         }
 
-        // Flip the flag to block additional search requests.
-        isEngineThinking = true
-
-        // Convert the current ChessCore position into a FEN string.
-        let fen = fenSerializer.fen(from: boardModel.game.position)
-        let searchSideToMove = boardModel.game.position.state.turn
-        // Rotate the token so old "bestmove" lines are ignored.
-        let token = UUID()
-        searchToken = token
-        engineTimeoutTask?.cancel()
-
-        let parser = UCIParser()
-        // Create a new engine instance with a line callback that parses UCI output.
-        let engine = SFEngine(lineHandler: { [weak self] line in
-            let parsedLine = parser.parse(line)
-            // Bounce back to the main actor because we will update UI state.
-            Task { @MainActor in
-                guard let self else { return }
-                self.receiveEngineOutput(
-                    parsedLine,
-                    searchSideToMove: searchSideToMove,
-                    token: token,
-                    engine: self.engine
-                )
-            }
-        })
-
-        self.engine = engine
-        // Start the Stockfish process and initiate the UCI protocol.
-        engine.start()
-        // Standard UCI handshake followed by a depth-limited search.
-        engine.sendCommand(UCICommand.uci.string)
-        // Ask Stockfish to confirm it is ready for commands.
-        engine.sendCommand(UCICommand.isReady.string)
-        // Reset internal engine state so the search is clean.
-        engine.sendCommand(UCICommand.newGame.string)
-        // Provide the current position in FEN.
-        engine.sendCommand(UCICommand.position(.fen(fen)).string)
-        // Launch the search at the chosen depth.
-        engine.sendCommand(UCICommand.go(.depth(engineDepth)).string)
-
-        // Guard against engine hangs by timing out after 30 seconds.
-        engineTimeoutTask = Task { [weak self] in
-            // Sleep asynchronously so the UI thread stays responsive.
-            do {
-                try await Task.sleep(for: .seconds(30))
-            } catch {
-                return
-            }
-            await MainActor.run {
-                self?.handleEngineTimeout(token: token)
-            }
-        }
+        let request = EngineSearchRequest(
+            purpose: .opponentMove,
+            fen: fenSerializer.fen(from: boardModel.game.position),
+            sideToMove: boardModel.game.position.state.turn,
+            multiPVCount: 1
+        )
+        startOrQueueEngineSearch(request)
     }
 
     /// Applies a deterministic legal opponent move for UI tests.
@@ -435,18 +462,30 @@ final class GameViewModel: ObservableObject {
         }
 
         guard applyMove(move: move) else { return }
-        _ = checkForGameEnd()
+        if !checkForGameEnd() {
+            scheduleSuggestionSearchIfNeeded()
+        }
     }
 
-    /// Handles parsed UCI output from the current engine search.
-    private func receiveEngineOutput(
-        _ output: UCIParsedLine,
-        searchSideToMove: PieceColor,
-        token: UUID,
-        engine: SFEngine?
-    ) {
-        guard token == searchToken else { return }
+    /// Handles parsed UCI output from the persistent engine.
+    private func receiveEngineOutput(_ output: UCIParsedLine) {
+        guard let searchSideToMove = activeSearchSideToMove else { return }
 
+        switch activeSearchPurpose {
+        case .opponentMove:
+            receiveOpponentEngineOutput(output, searchSideToMove: searchSideToMove)
+        case .suggestions:
+            receiveSuggestionEngineOutput(output, searchSideToMove: searchSideToMove)
+        case nil:
+            return
+        }
+    }
+
+    /// Handles parsed UCI output from an opponent-move search.
+    private func receiveOpponentEngineOutput(
+        _ output: UCIParsedLine,
+        searchSideToMove: PieceColor
+    ) {
         switch output {
         case .info(let info):
             if let score = info.whiteRelativeScore(sideToMove: searchSideToMove) {
@@ -454,7 +493,43 @@ final class GameViewModel: ObservableObject {
             }
 
         case .bestMove(let bestMove):
-            receiveEngineMove(move: bestMove.move, token: token, engine: engine)
+            receiveEngineMove(move: bestMove.move)
+
+        case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
+            return
+        }
+    }
+
+    /// Handles parsed UCI output from a move-suggestion search.
+    private func receiveSuggestionEngineOutput(
+        _ output: UCIParsedLine,
+        searchSideToMove: PieceColor
+    ) {
+        switch output {
+        case .info(let info):
+            if let score = info.whiteRelativeScore(sideToMove: searchSideToMove) {
+                evaluation = chessEvaluation(from: score)
+            }
+
+            if pendingSearchRequest == nil,
+               !ignoresActiveSuggestionOutput,
+               suggestionArrowCount > 0
+            {
+                updateSuggestionArrow(from: info)
+            }
+
+        case .bestMove(let bestMove):
+            if pendingSearchRequest == nil,
+               !ignoresActiveSuggestionOutput,
+               suggestionArrowCount > 0,
+               suggestedMovesByRank.isEmpty,
+               let move = bestMove.move
+            {
+                suggestedMovesByRank[1] = move
+                suggestedMovesPositionFEN = activeSearchFEN
+                refreshSuggestionArrows()
+            }
+            finishCurrentEngineSearch()
 
         case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
             return
@@ -462,20 +537,15 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Handles the engine move after receiving a parsed `bestmove` line.
-    private func receiveEngineMove(move: Move?, token: UUID, engine: SFEngine?) {
-        // Ignore stale responses from previous searches.
-        guard token == searchToken else { return }
-
+    private func receiveEngineMove(move: Move?) {
         // A nil move means Stockfish has no legal move.
         guard let move else {
-            // Stop the engine before reporting the failure.
-            finishEngineSearch(engine: engine)
+            finishCurrentEngineSearch()
             endGame(title: "Engine Error", message: "Stockfish did not return a move.")
             return
         }
 
-        // Stop the engine before applying the move to the UI.
-        finishEngineSearch(engine: engine)
+        finishCurrentEngineSearch()
 
         guard applyMove(
             move: move,
@@ -486,37 +556,41 @@ final class GameViewModel: ObservableObject {
         }
 
         // Check if the engine's move ended the game.
-        _ = checkForGameEnd()
+        if !checkForGameEnd() {
+            scheduleSuggestionSearchIfNeeded()
+        }
     }
 
     /// Fires when the engine does not respond within the timeout window.
     private func handleEngineTimeout(token: UUID) {
         // Only act if this timeout corresponds to the current search.
         guard isEngineThinking, token == searchToken else { return }
+
+        if activeSearchPurpose == .suggestions {
+            finishCurrentEngineSearch()
+            return
+        }
+
         // Cancel the engine and present a failure message.
-        finishEngineSearch(engine: engine)
+        finishCurrentEngineSearch()
         endGame(title: "Engine Timeout", message: "Stockfish did not return a move.")
     }
 
-    /// Finishes the current search and shuts down the engine instance.
-    private func finishEngineSearch(engine: SFEngine?) {
+    /// Finishes the current search while keeping the engine alive for the next request.
+    private func finishCurrentEngineSearch() {
         // Rotate the token so late engine output is ignored.
         searchToken = UUID()
         // Reset the thinking flag so a new search can begin later.
         isEngineThinking = false
+        activeSearchPurpose = nil
+        activeSearchSideToMove = nil
+        activeSearchFEN = nil
+        ignoresActiveSuggestionOutput = false
         // Stop and clear any pending timeout.
         engineTimeoutTask?.cancel()
         engineTimeoutTask = nil
 
-        if let engine {
-            // Stop off the main thread to avoid blocking UI.
-            DispatchQueue.global(qos: .userInitiated).async {
-                engine.stop()
-            }
-        }
-
-        // Release the engine so a fresh instance is created next time.
-        self.engine = nil
+        startPendingEngineSearchIfNeeded()
     }
 
     /// Cancels any running engine search without assuming it was active.
@@ -524,6 +598,14 @@ final class GameViewModel: ObservableObject {
         // Reset the token and flag regardless of current state.
         searchToken = UUID()
         isEngineThinking = false
+        activeSearchPurpose = nil
+        activeSearchSideToMove = nil
+        activeSearchFEN = nil
+        pendingSearchRequest = nil
+        ignoresActiveSuggestionOutput = false
+        suggestedMovesByRank.removeAll()
+        suggestedMovesPositionFEN = nil
+        boardModel.clearArrows()
         // Cancel the timeout so it does not fire after cleanup.
         engineTimeoutTask?.cancel()
         engineTimeoutTask = nil
@@ -563,7 +645,251 @@ final class GameViewModel: ObservableObject {
     private func endGame(title: String, message: String) {
         // Always stop the engine before presenting an end-state.
         stopEngineIfNeeded()
+        boardModel.clearArrows()
         activeAlert = .result(GameResult(title: title, message: message))
+    }
+
+    /// Starts or refreshes a move-suggestion search when the player is on move.
+    private func scheduleSuggestionSearchIfNeeded() {
+        guard suggestionArrowCount > 0 else {
+            cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
+            return
+        }
+
+        guard boardModel.game.position.state.turn == playerColor else {
+            boardModel.clearArrows()
+            return
+        }
+
+        let fen = fenSerializer.fen(from: boardModel.game.position)
+        if suggestedMovesPositionFEN == fen {
+            refreshSuggestionArrows()
+            return
+        }
+
+        if activeSearchPurpose == .suggestions, activeSearchFEN == fen {
+            refreshSuggestionArrows()
+            return
+        }
+
+        guard activeSearchPurpose != .opponentMove else { return }
+
+        if Self.usesScriptedUITestEngine {
+            applyScriptedSuggestionArrows()
+        } else {
+            requestSuggestionArrows()
+        }
+    }
+
+    /// Starts a Stockfish MultiPV search whose output is rendered as arrows.
+    private func requestSuggestionArrows() {
+        guard suggestionArrowCount > 0 else { return }
+        guard boardModel.game.position.state.turn == playerColor else { return }
+
+        let request = EngineSearchRequest(
+            purpose: .suggestions,
+            fen: fenSerializer.fen(from: boardModel.game.position),
+            sideToMove: boardModel.game.position.state.turn,
+            multiPVCount: Self.maximumSuggestionArrowCount
+        )
+        startOrQueueEngineSearch(request)
+    }
+
+    /// Starts a search or stops the current suggestion search and queues this one.
+    private func startOrQueueEngineSearch(_ request: EngineSearchRequest) {
+        if isEngineThinking {
+            if activeSearchPurpose == .suggestions {
+                cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
+            }
+            return
+        }
+
+        startEngineSearch(request)
+    }
+
+    /// Starts one UCI search on the persistent engine.
+    private func startEngineSearch(_ request: EngineSearchRequest) {
+        guard let engine = ensureEngineStarted() else { return }
+
+        isEngineThinking = true
+        activeSearchPurpose = request.purpose
+        activeSearchSideToMove = request.sideToMove
+        activeSearchFEN = request.fen
+        pendingSearchRequest = nil
+        ignoresActiveSuggestionOutput = false
+        searchToken = UUID()
+        engineTimeoutTask?.cancel()
+
+        if request.purpose == .suggestions {
+            suggestedMovesByRank.removeAll()
+            suggestedMovesPositionFEN = nil
+            boardModel.clearArrows()
+        }
+
+        engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
+        engine.sendCommand(UCICommand.isReady.string)
+        engine.sendCommand(UCICommand.newGame.string)
+        engine.sendCommand(UCICommand.position(.fen(request.fen)).string)
+        engine.sendCommand(UCICommand.go(.depth(engineDepth)).string)
+
+        startEngineTimeout(token: searchToken)
+    }
+
+    /// Lazily starts the single embedded Stockfish instance for this screen.
+    private func ensureEngineStarted() -> SFEngine? {
+        if let engine {
+            return engine
+        }
+
+        let parser = UCIParser()
+        let engine = SFEngine(lineHandler: { [weak self] line in
+            let parsedLine = parser.parse(line)
+            Task { @MainActor in
+                self?.receiveEngineOutput(parsedLine)
+            }
+        })
+
+        self.engine = engine
+        engine.start()
+        engine.sendCommand(UCICommand.uci.string)
+        return engine
+    }
+
+    /// Guard against engine hangs by timing out the active search.
+    private func startEngineTimeout(token: UUID) {
+        engineTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(30))
+            } catch {
+                return
+            }
+            await MainActor.run {
+                self?.handleEngineTimeout(token: token)
+            }
+        }
+    }
+
+    /// Cancels only an active suggestion search, preserving opponent searches.
+    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
+        if activeSearchPurpose == .suggestions {
+            pendingSearchRequest = queueReplacement
+            ignoresActiveSuggestionOutput = true
+            engine?.sendCommand(UCICommand.stop.string)
+        } else if let queueReplacement {
+            pendingSearchRequest = queueReplacement
+        }
+
+        suggestedMovesByRank.removeAll()
+        suggestedMovesPositionFEN = nil
+
+        if clearSuggestions {
+            boardModel.clearArrows()
+        }
+    }
+
+    /// Starts a queued search after the current search has ended.
+    private func startPendingEngineSearchIfNeeded() {
+        guard let request = pendingSearchRequest else { return }
+        pendingSearchRequest = nil
+        startEngineSearch(request)
+    }
+
+    /// Creates deterministic suggestion arrows for simulator UI tests.
+    private func applyScriptedSuggestionArrows() {
+        guard suggestionArrowCount > 0,
+              boardModel.game.position.state.turn == playerColor
+        else {
+            boardModel.clearArrows()
+            return
+        }
+
+        let preferredMoves: [String]
+        switch playerColor {
+        case .white:
+            preferredMoves = ["e2e4", "g1f3", "f1c4", "d2d4", "d2d3", "c2c4"]
+        case .black:
+            preferredMoves = ["e7e5", "g8f6", "d7d5", "f8c5", "b8c6", "c7c5"]
+        }
+
+        let legalMoves = boardModel.game.legalMoves
+        var rankedMoves = preferredMoves
+            .compactMap { try? Move(string: $0) }
+            .filter { legalMoves.contains($0) }
+
+        for move in legalMoves where !rankedMoves.contains(move) {
+            rankedMoves.append(move)
+        }
+
+        suggestedMovesByRank = Dictionary(
+            uniqueKeysWithValues: rankedMoves
+                .prefix(Self.maximumSuggestionArrowCount)
+                .enumerated()
+                .map { index, move in (index + 1, move) }
+        )
+        suggestedMovesPositionFEN = fenSerializer.fen(from: boardModel.game.position)
+        refreshSuggestionArrows()
+    }
+
+    /// Updates one suggested move from a parsed `info multipv` line.
+    private func updateSuggestionArrow(from info: UCIInfoLine) {
+        guard let move = info.principalVariation.first else { return }
+
+        let rank = info.multipv ?? 1
+        guard (1...Self.maximumSuggestionArrowCount).contains(rank) else { return }
+
+        suggestedMovesByRank[rank] = move
+        suggestedMovesPositionFEN = activeSearchFEN
+        refreshSuggestionArrows()
+    }
+
+    /// Maps ranked suggested moves into ChessUI board arrows.
+    private func refreshSuggestionArrows() {
+        guard suggestionArrowCount > 0 else {
+            boardModel.clearArrows()
+            return
+        }
+
+        boardModel.arrows = (1...suggestionArrowCount).compactMap { rank in
+            guard let move = suggestedMovesByRank[rank] else { return nil }
+            return suggestionArrow(for: move, rank: rank)
+        }
+    }
+
+    /// Creates the ChessUI arrow for one suggested move.
+    private func suggestionArrow(for move: Move, rank: Int) -> ChessBoardArrow? {
+        ChessBoardArrow(
+            from: move.from.coordinate,
+            to: move.to.coordinate,
+            style: suggestionArrowStyle(for: rank),
+            label: suggestionArrowLabel(for: move, rank: rank)
+        )
+    }
+
+    /// Built-in ranked arrow styles stop at three suggestions.
+    private func suggestionArrowStyle(for rank: Int) -> ChessBoardArrowStyle {
+        switch rank {
+        case 1:
+            return .primarySuggestion
+        case 2:
+            return .secondarySuggestion
+        default:
+            return .tertiarySuggestion
+        }
+    }
+
+    /// Accessibility text that identifies each suggestion rank.
+    private func suggestionArrowLabel(for move: Move, rank: Int) -> String {
+        let rankText: String
+        switch rank {
+        case 1:
+            rankText = "Best suggestion"
+        case 2:
+            rankText = "Second suggestion"
+        default:
+            rankText = "Third suggestion"
+        }
+
+        return "\(rankText) \(move.from.coordinate) to \(move.to.coordinate)"
     }
 
     /// Converts a claimable rule into the terminal draw reason shown by the UI.

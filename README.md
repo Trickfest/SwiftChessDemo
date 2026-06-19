@@ -29,6 +29,8 @@ How it all fits together:
 - The game screen uses `ChessMoveListView` with `ChessCore` move records to
   show SAN move history as the game progresses.
 - The game screen uses `ChessEvaluationBar` for optional evaluation display.
+- The game screen can show zero, one, two, or three app-supplied
+  `ChessBoardArrow` move suggestions from Stockfish MultiPV analysis.
 - `ChessCore` owns the rules engine, legal move generation, and game state.
 - `ChessUCI` formats Stockfish command strings and parses `info` and
   `bestmove` lines into typed values.
@@ -46,21 +48,27 @@ Data flow at a glance:
   `position`, and `go` command strings sent to Stockfish.
 - Stockfish streams `info` lines that `ChessUCI` parses into White-positive
   evaluation values for `ChessEvaluationBar`.
+- When suggestions are enabled, SwiftChessDemo asks Stockfish for up to three
+  MultiPV analysis lines on the human player's turn, caches the ranked first
+  moves, and filters the visible ChessUI arrows according to the user's
+  suggestion-count picker. ChessUI renders the arrows but does not decide which
+  moves to suggest.
 - Stockfish returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
 
 Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for side and engine depth.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme, and
   coordinate-label switching during play, visible ChessUI status and move-list
-  components, optional evaluation-bar display, compact horizontal move-list
-  layout on iPhone, and navigation flow.
+  components, optional evaluation-bar display, selectable move-suggestion
+  arrows, compact horizontal move-list layout on iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, engine coordination, safe
   move application, ChessUCI command formatting and parsing, evaluation
-  normalization, and ChessCore game-status integration.
+  normalization, Stockfish MultiPV suggestion mapping, and ChessCore
+  game-status integration.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
-  status, move-list, and evaluation display options, and four-full-move game
-  flows from both white and black perspectives.
+  status, move-list, evaluation display options, selectable suggestion arrows,
+  and four-full-move game flows from both white and black perspectives.
 
 Automated UI tests:
 - Run the suite with `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`.
@@ -73,6 +81,10 @@ Automated UI tests:
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live Stockfish analysis.
+- Suggestion-arrow UI coverage uses `SWIFT_CHESS_DEMO_UI_TEST_SCRIPTED_ENGINE=1`
+  plus optional `SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT` values from
+  `0` through `3` so rendered arrows are deterministic without live Stockfish
+  analysis.
 
 Local dependencies:
 - `../SwiftChessTools`: local Swift package products `ChessCore`, `ChessUI`,
