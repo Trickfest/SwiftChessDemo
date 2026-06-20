@@ -39,26 +39,13 @@ jobs:
             https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue \
             -o StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
 
-      - name: Select iPhone simulator
-        id: simulator
-        run: |
-          set -euo pipefail
-          simulator_id="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && $0 !~ /unavailable/ { print $2; exit }')"
-          if [ -z "$simulator_id" ]; then
-            echo "No available iPhone simulator found." >&2
-            xcrun simctl list devices available >&2
-            exit 1
-          fi
-          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
-          echo "Selected simulator: $simulator_id"
-
       - name: Run SwiftChessDemo tests
         working-directory: SwiftChessDemo
         run: |
           xcodebuild -project SwiftChessDemo.xcodeproj \
             -scheme SwiftChessDemo \
             -configuration Debug \
-            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}" \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
             -derivedDataPath .build/xcode-swiftchessdemo \
             -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
             test
