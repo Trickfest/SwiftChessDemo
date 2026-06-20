@@ -157,12 +157,14 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
   test
 ```
 
-- GitHub Actions runs the same shared Xcode scheme after checking out
+- GitHub Actions runs the app-hosted unit tests after checking out
   `SwiftChessDemo`, `SwiftChessTools`, and `StockfishEmbedded` as siblings and
-  downloading the Stockfish NNUE file.
-- The shared scheme includes both fast scenario unit tests and full UI tests.
-  The unit tests run inside the demo app host so `Bundle.main` loads the same
-  bundled scenarios the app uses at runtime.
+  downloading the Stockfish NNUE file. The full UI suite is the local release
+  gate because hosted simulator UI tests are slower and more environment
+  sensitive.
+- The shared local scheme includes both fast scenario unit tests and full UI
+  tests. The unit tests run inside the demo app host so `Bundle.main` loads the
+  same bundled scenarios the app uses at runtime.
 - Scenario replay tests set `SWIFT_CHESS_DEMO_SCENARIO=<scenario-id>` and
   optionally `SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=0`. Each scenario id maps
   to a JSON file in `SwiftChessDemo/Scenarios`; the JSON points at the PGN

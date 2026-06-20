@@ -61,8 +61,8 @@ Initial public release.
 - Added app-hosted SwiftChessDemo unit tests for scenario loading, scenario
   index validation failures, and deterministic move-provider behavior.
 - Added GitHub Actions CI that checks out the public sibling dependencies,
-  downloads the required Stockfish NNUE file, and runs the shared Xcode test
-  scheme.
+  downloads the required Stockfish NNUE file, and runs the app-hosted unit
+  tests.
 
 ### Changed
 
@@ -114,6 +114,9 @@ Initial public release.
   and cancelled suggestion-output handling into `StockfishMoveProvider`.
 - Clarified public setup documentation so SwiftChessDemo can be cloned with
   public sibling checkouts without requiring any parent workspace repo.
+- Clarified automated-test documentation so hosted GitHub Actions runs the
+  fast app-hosted unit tests while the full simulator UI suite remains the
+  local release gate.
 
 ### Fixed
 

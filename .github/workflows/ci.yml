@@ -13,6 +13,7 @@ jobs:
   xcode-tests:
     name: Xcode Tests
     runs-on: macos-26
+    timeout-minutes: 25
 
     steps:
       - name: Check out SwiftChessDemo
@@ -39,7 +40,7 @@ jobs:
             https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue \
             -o StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
 
-      - name: Run SwiftChessDemo tests
+      - name: Run SwiftChessDemo unit tests
         working-directory: SwiftChessDemo
         run: |
           xcodebuild -project SwiftChessDemo.xcodeproj \
@@ -48,4 +49,5 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
             -derivedDataPath .build/xcode-swiftchessdemo \
             -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
+            -skip-testing:SwiftChessDemoUITests \
             test
