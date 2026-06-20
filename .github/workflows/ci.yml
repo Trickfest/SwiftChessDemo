@@ -1,0 +1,64 @@
+name: SwiftChessDemo CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  xcode-tests:
+    name: Xcode Tests
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out SwiftChessDemo
+        uses: actions/checkout@v4
+        with:
+          path: SwiftChessDemo
+
+      - name: Check out SwiftChessTools
+        uses: actions/checkout@v4
+        with:
+          repository: Trickfest/SwiftChessTools
+          path: SwiftChessTools
+
+      - name: Check out StockfishEmbedded
+        uses: actions/checkout@v4
+        with:
+          repository: Trickfest/StockfishEmbedded
+          path: StockfishEmbedded
+
+      - name: Download Stockfish NNUE weights
+        run: |
+          mkdir -p StockfishEmbedded/Resources/NNUE
+          curl -L --fail --retry 3 --retry-delay 5 \
+            https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue \
+            -o StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
+
+      - name: Select iPhone simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          simulator_id="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && $0 !~ /unavailable/ { print $2; exit }')"
+          if [ -z "$simulator_id" ]; then
+            echo "No available iPhone simulator found." >&2
+            xcrun simctl list devices available >&2
+            exit 1
+          fi
+          echo "id=$simulator_id" >> "$GITHUB_OUTPUT"
+          echo "Selected simulator: $simulator_id"
+
+      - name: Run SwiftChessDemo tests
+        working-directory: SwiftChessDemo
+        run: |
+          xcodebuild -project SwiftChessDemo.xcodeproj \
+            -scheme SwiftChessDemo \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}" \
+            -derivedDataPath .build/xcode-swiftchessdemo \
+            -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
+            test

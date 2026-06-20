@@ -3,9 +3,15 @@
 All notable changes to SwiftChessDemo should be documented in this file.
 
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
-for a release.
+for a release. Tagged releases use dated version headings.
 
 ## Unreleased
+
+No unreleased changes.
+
+## 1.0.0 - 2026-06-20
+
+Initial public release.
 
 ### Added
 
@@ -54,6 +60,9 @@ for a release.
   bundled scenario JSON resources and PGN loading.
 - Added app-hosted SwiftChessDemo unit tests for scenario loading, scenario
   index validation failures, and deterministic move-provider behavior.
+- Added GitHub Actions CI that checks out the public sibling dependencies,
+  downloads the required Stockfish NNUE file, and runs the shared Xcode test
+  scheme.
 
 ### Changed
 

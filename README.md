@@ -157,6 +157,9 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
   test
 ```
 
+- GitHub Actions runs the same shared Xcode scheme after checking out
+  `SwiftChessDemo`, `SwiftChessTools`, and `StockfishEmbedded` as siblings and
+  downloading the Stockfish NNUE file.
 - The shared scheme includes both fast scenario unit tests and full UI tests.
   The unit tests run inside the demo app host so `Bundle.main` loads the same
   bundled scenarios the app uses at runtime.
