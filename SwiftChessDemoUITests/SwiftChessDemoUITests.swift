@@ -75,10 +75,10 @@ final class SwiftChessDemoUITests: XCTestCase {
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
-        let initialPosition = try boardValue(in: app)
-        let afterWhiteEngineMove = try waitForBoardTurn(
+        let openingPosition = try boardValue(in: app)
+        let afterWhiteEngineMove = try waitForBoardTurnOrUseCurrent(
             .black,
-            from: initialPosition,
+            currentValue: openingPosition,
             in: app,
             named: "opening White engine move"
         )
@@ -826,9 +826,11 @@ final class SwiftChessDemoUITests: XCTestCase {
         line: UInt = #line
     ) throws -> String {
         let deadline = Date().addingTimeInterval(timeout)
+        var lastValue = ""
 
         repeat {
             let currentValue = try self.boardValue(in: app, file: file, line: line)
+            lastValue = currentValue
             if currentValue != boardValue,
                currentValue.contains(turn.token) {
                 return currentValue
@@ -837,9 +839,33 @@ final class SwiftChessDemoUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline
 
-        let message = "Board value did not change to \(turn.token.trimmingCharacters(in: .whitespaces)) after \(changeName)"
+        let message = "Board value did not change to \(turn.token.trimmingCharacters(in: .whitespaces)) after \(changeName). Last value: \(lastValue)"
         XCTFail(message, file: file, line: line)
         throw UITestFailure(description: message)
+    }
+
+    private func waitForBoardTurnOrUseCurrent(
+        _ turn: FENTurn,
+        currentValue: String,
+        in app: XCUIApplication,
+        named changeName: String,
+        timeout: TimeInterval = 20,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> String {
+        if currentValue.contains(turn.token) {
+            return currentValue
+        }
+
+        return try waitForBoardTurn(
+            turn,
+            from: currentValue,
+            in: app,
+            named: changeName,
+            timeout: timeout,
+            file: file,
+            line: line
+        )
     }
 
     private func waitForBoardValue(
@@ -897,19 +923,19 @@ final class SwiftChessDemoUITests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> String {
-        let uiTestFEN = app.staticTexts["UITest.positionFEN"].firstMatch
-        if uiTestFEN.exists {
-            return uiTestFEN.label
+        let board = app.descendants(matching: .any)["Game.boardState"].firstMatch
+        if board.exists {
+            return board.value as? String ?? ""
         }
 
-        let board = try requireElement(
-            app.descendants(matching: .any)["Game.boardState"].firstMatch,
-            named: "game board state",
+        let uiTestFEN = try requireElement(
+            app.staticTexts["UITest.positionFEN"].firstMatch,
+            named: "UI test position FEN",
             file: file,
             line: line
         )
 
-        return board.value as? String ?? ""
+        return uiTestFEN.label
     }
 
     private func gameBoardStateValue(

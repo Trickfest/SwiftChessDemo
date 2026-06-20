@@ -117,6 +117,8 @@ Initial public release.
 
 ### Fixed
 
+- Hardened scenario-backed UI smoke tests so Black-side startup works whether
+  the opening scripted move is still pending or has already reached the board.
 - Fixed suggestion-arrow engine analysis so changing suggestion counts and
   moving while analysis is active no longer starts overlapping embedded
   Stockfish instances.
