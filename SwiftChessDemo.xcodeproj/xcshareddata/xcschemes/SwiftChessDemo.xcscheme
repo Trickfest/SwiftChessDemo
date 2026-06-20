@@ -29,6 +29,20 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E4F100000000000000000006"
+               BuildableName = "SwiftChessDemoTests.xctest"
+               BlueprintName = "SwiftChessDemoTests"
+               ReferencedContainer = "container:SwiftChessDemo.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "C0D100000000000000000006"
                BuildableName = "SwiftChessDemoUITests.xctest"
                BlueprintName = "SwiftChessDemoUITests"
@@ -43,6 +57,16 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E4F100000000000000000006"
+               BuildableName = "SwiftChessDemoTests.xctest"
+               BlueprintName = "SwiftChessDemoTests"
+               ReferencedContainer = "container:SwiftChessDemo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
          <TestableReference
             skipped = "NO">
             <BuildableReference

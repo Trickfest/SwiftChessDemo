@@ -82,14 +82,19 @@ Key files to read:
   abstraction used by scenario replay and scenario-backed UI tests.
 - `SwiftChessDemo/Scenarios/`: checked-in scenario index, authoring guide, JSON
   definitions, and PGN fixtures.
+- `SwiftChessDemoTests/GameScenarioUnitTests.swift`: fast unit coverage for
+  scenario loading, index validation, and deterministic move-provider behavior.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
   status, move-list, evaluation display options, selectable suggestion arrows,
   scenario replay, and four-full-move game flows from both white and black
   perspectives.
 
-Automated UI tests:
+Automated tests:
 - Run the suite with `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`.
+- The shared scheme includes both fast scenario unit tests and full UI tests.
+  The unit tests run inside the demo app host so `Bundle.main` loads the same
+  bundled scenarios the app uses at runtime.
 - Scenario replay tests set `SWIFT_CHESS_DEMO_SCENARIO=<scenario-id>` and
   optionally `SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=0`. Each scenario id maps
   to a JSON file in `SwiftChessDemo/Scenarios`; the JSON points at the PGN

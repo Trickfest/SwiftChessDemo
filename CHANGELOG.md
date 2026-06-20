@@ -50,6 +50,8 @@ for a release.
   deterministic replay fixtures.
 - Added SwiftChessDemo UI coverage that validates the scenario index against
   bundled scenario JSON resources and PGN loading.
+- Added app-hosted SwiftChessDemo unit tests for scenario loading, scenario
+  index validation failures, and deterministic move-provider behavior.
 
 ### Changed
 
