@@ -271,6 +271,66 @@ final class ScenarioReplayMoveProviderTests: XCTestCase {
     }
 }
 
+@MainActor
+final class GameViewModelEngineActivityTests: XCTestCase {
+    func testRemainingMinimumThinkingDelayTreatsDelayAsMinimumNotAdditive() {
+        let now = Date(timeIntervalSinceReferenceDate: 100)
+
+        XCTAssertEqual(
+            GameViewModel.remainingMinimumThinkingDelay(
+                startedAt: now.addingTimeInterval(-1),
+                now: now,
+                minimumDuration: 2.5
+            ),
+            1.5,
+            accuracy: 0.001
+        )
+
+        XCTAssertEqual(
+            GameViewModel.remainingMinimumThinkingDelay(
+                startedAt: now.addingTimeInterval(-10),
+                now: now,
+                minimumDuration: 2.5
+            ),
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testRemainingMinimumThinkingDelayIsZeroWithoutStartTime() {
+        XCTAssertEqual(
+            GameViewModel.remainingMinimumThinkingDelay(
+                startedAt: nil,
+                now: Date(timeIntervalSinceReferenceDate: 100),
+                minimumDuration: 2.5
+            ),
+            0,
+            accuracy: 0.001
+        )
+    }
+
+    func testEngineActivityStateMessagesAndProgress() {
+        XCTAssertNil(GameViewModel.EngineActivityState.idle.message)
+        XCTAssertFalse(GameViewModel.EngineActivityState.idle.showsProgress)
+        XCTAssertEqual(GameViewModel.EngineActivityState.idle.accessibilityValue, "Idle")
+
+        let thinking = GameViewModel.EngineActivityState.thinking(depth: 12)
+        XCTAssertEqual(thinking.message, "Stockfish thinking at depth 12...")
+        XCTAssertTrue(thinking.showsProgress)
+
+        let timeout = GameViewModel.EngineActivityState.timeoutWaiting(depth: 30)
+        XCTAssertEqual(
+            timeout.message,
+            "Depth 30 timed out; waiting for best move..."
+        )
+        XCTAssertTrue(timeout.showsProgress)
+
+        let notice = GameViewModel.EngineActivityState.notice("Stockfish timed out; played the best move found so far.")
+        XCTAssertEqual(notice.accessibilityValue, "Stockfish timed out; played the best move found so far.")
+        XCTAssertFalse(notice.showsProgress)
+    }
+}
+
 private struct ScenarioExpectation {
     let id: String
     let moveCount: Int

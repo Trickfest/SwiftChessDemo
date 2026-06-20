@@ -56,8 +56,8 @@ How it all fits together:
 - `ChessUCI` formats UCI command strings and parses `info` and `bestmove`
   lines into typed values.
 - SwiftChessDemo owns app policy: view-model state, engine timing, move-provider
-  selection, user display preferences, error handling, and when validated moves
-  should mutate the game.
+  selection, user display preferences, recoverable engine status feedback,
+  error handling, and when validated moves should mutate the game.
 - `StockfishMoveProvider` wraps the embedded Stockfish lifecycle and serialized
   UCI searches for live play.
 - `ScenarioReplayMoveProvider` supplies deterministic non-Stockfish moves for
@@ -76,9 +76,16 @@ Data flow at a glance:
 - When it is the engine's turn, `StockfishMoveProvider` uses `ChessUCI` to
   format the UCI handshake, `position`, and `go` command strings sent to
   Stockfish.
+- Opponent searches start immediately after the user's move. SwiftChessDemo
+  keeps a minimum visible thinking interval before applying very fast replies,
+  but it does not add that interval on top of slower real searches.
 - Stockfish streams `info` lines through `StockfishMoveProvider`, where
   `ChessUCI` parses them into White-positive evaluation values for
   `ChessEvaluationBar`.
+- If a Stockfish search reaches the demo timeout, SwiftChessDemo asks the
+  engine to stop, applies the returned `bestmove` when available, and uses the
+  existing status display for a brief nonfatal notice that the timeout fallback
+  was used before returning to the normal game status.
 - When suggestions are enabled, SwiftChessDemo asks Stockfish for up to three
   MultiPV analysis lines on the human player's turn, caches the ranked first
   moves, and filters the visible ChessUI arrows according to the user's
@@ -110,15 +117,17 @@ Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the human side.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme, and
   coordinate-label switching during play, visible ChessUI status and move-list
-  components, optional evaluation-bar display, in-game engine-depth control,
-  selectable move-suggestion arrows, compact horizontal move-list layout on
-  iPhone, and navigation flow.
+  components, status-row engine activity and timeout notices, optional
+  evaluation-bar display, in-game engine-depth control, selectable
+  move-suggestion arrows, compact horizontal move-list layout on iPhone, and
+  navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
-  provider event handling, evaluation normalization, Stockfish MultiPV
-  suggestion mapping, and ChessCore game-status integration.
+  provider event handling, minimum-visible-thinking timing, recoverable timeout
+  fallback, evaluation normalization, Stockfish MultiPV suggestion mapping, and
+  ChessCore game-status integration.
 - `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
-  serialized search requests, UCI command formatting/parsing, timeouts, and
-  cancelled suggestion-output handling.
+  serialized search requests, UCI command formatting/parsing, timeout `stop`
+  handling, and cancelled suggestion-output handling.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
   for deterministic replay fixtures.
 - `SwiftChessDemo/GameScenarioIndex.swift`: bundled scenario catalog loading and

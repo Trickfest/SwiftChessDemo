@@ -32,6 +32,7 @@ struct StockfishSearchRequest: Equatable, Sendable {
 enum StockfishMoveProviderEvent: Equatable, Sendable {
     case output(UCIParsedLine, request: StockfishSearchRequest)
     case timeout(StockfishSearchRequest)
+    case timeoutWithoutBestMove(StockfishSearchRequest)
 }
 
 /// Owns the embedded Stockfish process and UCI search lifecycle.
@@ -48,8 +49,11 @@ final class StockfishMoveProvider {
     private var activeRequest: StockfishSearchRequest?
     private var queuedSearchRequest: StockfishSearchRequest?
     private var isIgnoringActiveSuggestionOutput = false
+    private var isWaitingForBestMoveAfterTimeout = false
+    private var engineInstanceID = UUID()
     private var searchToken = UUID()
     private var timeoutTask: Task<Void, Never>?
+    private var timeoutStopTask: Task<Void, Never>?
 
     init(eventHandler: @escaping EventHandler) {
         self.eventHandler = eventHandler
@@ -93,8 +97,12 @@ final class StockfishMoveProvider {
         activeRequest = nil
         queuedSearchRequest = nil
         isIgnoringActiveSuggestionOutput = false
+        isWaitingForBestMoveAfterTimeout = false
+        engineInstanceID = UUID()
         timeoutTask?.cancel()
         timeoutTask = nil
+        timeoutStopTask?.cancel()
+        timeoutStopTask = nil
 
         if let engine {
             DispatchQueue.global(qos: .userInitiated).async {
@@ -110,8 +118,10 @@ final class StockfishMoveProvider {
         activeRequest = request
         queuedSearchRequest = nil
         isIgnoringActiveSuggestionOutput = false
+        isWaitingForBestMoveAfterTimeout = false
         searchToken = UUID()
         timeoutTask?.cancel()
+        timeoutStopTask?.cancel()
 
         engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
         engine.sendCommand(UCICommand.isReady.string)
@@ -128,10 +138,12 @@ final class StockfishMoveProvider {
         }
 
         let parser = UCIParser()
+        let engineInstanceID = UUID()
+        self.engineInstanceID = engineInstanceID
         let engine = SFEngine(lineHandler: { [weak self] line in
             let parsedLine = parser.parse(line)
             Task { @MainActor in
-                self?.receiveParsedLine(parsedLine)
+                self?.receiveParsedLine(parsedLine, engineInstanceID: engineInstanceID)
             }
         })
 
@@ -141,7 +153,8 @@ final class StockfishMoveProvider {
         return engine
     }
 
-    private func receiveParsedLine(_ output: UCIParsedLine) {
+    private func receiveParsedLine(_ output: UCIParsedLine, engineInstanceID: UUID) {
+        guard engineInstanceID == self.engineInstanceID else { return }
         guard let request = activeRequest else { return }
 
         if isIgnoringActiveSuggestionOutput, request.purpose == .suggestions {
@@ -175,25 +188,69 @@ final class StockfishMoveProvider {
 
     private func handleTimeout(token: UUID) {
         guard token == searchToken, let request = activeRequest else { return }
-        let queuedRequest = finishCurrentSearch()
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        isWaitingForBestMoveAfterTimeout = true
         eventHandler(.timeout(request))
+        engine?.sendCommand(UCICommand.stop.string)
+        startBestMoveAfterStopTimeout(token: token)
+    }
+
+    private func startBestMoveAfterStopTimeout(token: UUID) {
+        timeoutStopTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+
+            self?.handleBestMoveAfterStopTimeout(token: token)
+        }
+    }
+
+    private func handleBestMoveAfterStopTimeout(token: UUID) {
+        guard token == searchToken,
+              let request = activeRequest,
+              isWaitingForBestMoveAfterTimeout
+        else {
+            return
+        }
+
+        let queuedRequest = finishCurrentSearch()
+        discardEngineAfterUnresponsiveSearch()
+        eventHandler(.timeoutWithoutBestMove(request))
         startQueuedSearchIfStillIdle(queuedRequest)
     }
 
     private func finishCurrentSearch() -> StockfishSearchRequest? {
         activeRequest = nil
         isIgnoringActiveSuggestionOutput = false
+        isWaitingForBestMoveAfterTimeout = false
         searchToken = UUID()
         timeoutTask?.cancel()
         timeoutTask = nil
+        timeoutStopTask?.cancel()
+        timeoutStopTask = nil
 
         let request = queuedSearchRequest
         queuedSearchRequest = nil
         return request
     }
 
+    private func discardEngineAfterUnresponsiveSearch() {
+        let engine = engine
+        self.engine = nil
+        engineInstanceID = UUID()
+
+        if let engine {
+            DispatchQueue.global(qos: .userInitiated).async {
+                engine.stop()
+            }
+        }
+    }
+
     private func startQueuedSearchIfStillIdle(_ request: StockfishSearchRequest?) {
-        guard let request, activeRequest == nil, engine != nil else { return }
+        guard let request, activeRequest == nil else { return }
         startSearch(request)
     }
 }

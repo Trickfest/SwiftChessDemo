@@ -22,6 +22,8 @@ for a release.
   parsed Stockfish `info score` output.
 - Added optional in-game move suggestion arrows backed by ChessUI
   `ChessBoardArrow` rendering and Stockfish MultiPV analysis.
+- Added visible in-game engine activity and brief recoverable timeout feedback
+  in the existing status row.
 - Added in-game display toggles for showing or hiding the status display and
   move list.
 - Added an in-game display toggle for showing or hiding the evaluation bar.
@@ -65,9 +67,8 @@ for a release.
   game screen so display options can be reviewed without resigning.
 - Moved the Stockfish depth control onto the game screen so the depth can be
   changed between searches during play.
-- Added a short opponent "thinking" pause before requesting a Stockfish move, so
-  the player's latest source/destination highlight remains visible before the
-  engine reply updates the board.
+- Added a visible opponent "thinking" state in the existing game-status row, so
+  engine activity does not add a second status box or shift the board layout.
 - Changed claimable draw handling so claim buttons surface through
   `ChessGameStatusView` instead of being claimed automatically.
 - Changed the compact game layout to show the move list as a horizontal strip
@@ -83,6 +84,16 @@ for a release.
 - Changed the in-game suggestions selector to filter cached three-line MultiPV
   analysis instead of changing the Stockfish MultiPV count for each visible
   arrow count.
+- Changed Stockfish replies to start searching immediately while preserving a
+  minimum visible thinking interval before fast replies are applied.
+- Reduced the normal visible engine thinking minimum from 2.5 seconds to 1.0
+  second.
+- Changed Stockfish timeout handling to request `bestmove` with `stop` and play
+  the best move found so far when available instead of ending the game.
+- Changed transient engine notices to clear automatically so the status row
+  returns to the normal game status after a short interval.
+- Renamed the in-game display-options section to `Preferences` and moved the
+  native depth stepper to the bottom of that section.
 - Clarified reference-app documentation for SwiftChessTools integration,
   scenario authoring, automated tests, and app-owned engine/scenario boundaries.
 - Isolated deterministic non-Stockfish moves behind a `GameMoveProvider`

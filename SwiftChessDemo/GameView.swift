@@ -266,6 +266,7 @@ struct GameView: View {
             + "Coordinates: \(coordinateState), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Depth: \(viewModel.engineDepth), "
+            + "Engine: \(viewModel.engineActivity.accessibilityValue), "
             + viewModel.scenarioAccessibilityValue
             + "FEN: \(viewModel.positionFEN)"
     }
@@ -291,17 +292,17 @@ struct GameView: View {
     }
 
     private var displayOptionsSection: some View {
-        panelSection("Display") {
+        panelSection("Preferences") {
             if horizontalSizeClass == .regular {
                 VStack(spacing: 10) {
                     pieceSetControl
                     boardThemeControl
-                    engineDepthControl
                     suggestionArrowsControl
                     coordinateLabelsToggle
                     gameStatusToggle
                     moveListToggle
                     evaluationBarToggle
+                    engineDepthControl
                 }
             } else {
                 compactDisplayOptions
@@ -317,7 +318,6 @@ struct GameView: View {
             }
 
             suggestionArrowsControl
-            engineDepthControl
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -330,16 +330,22 @@ struct GameView: View {
                     evaluationBarToggle
                 }
             }
+
+            engineDepthControl
         }
     }
 
     private var statusDisplay: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ChessGameStatusView(
-                status: viewModel.gameStatus,
-                turn: viewModel.sideToMove
-            ) { claim in
-                viewModel.claimDraw(claim)
+            if viewModel.engineActivity.message != nil {
+                engineStatusContent
+            } else {
+                ChessGameStatusView(
+                    status: viewModel.gameStatus,
+                    turn: viewModel.sideToMove
+                ) { claim in
+                    viewModel.claimDraw(claim)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -349,6 +355,29 @@ struct GameView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.08))
         }
+    }
+
+    private var engineStatusContent: some View {
+        HStack(spacing: 8) {
+            Text(viewModel.engineActivity.message ?? "")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            if viewModel.engineActivity.showsProgress {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.primary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Engine status")
+        .accessibilityValue(viewModel.engineActivity.accessibilityValue)
+        .accessibilityIdentifier("Game.engineStatus")
     }
 
     private var compactMoveListStrip: some View {
