@@ -55,7 +55,8 @@ for a release.
 
 ### Changed
 
-- Clarified SwiftChessDemo's GPL v3.0 license posture because the app links with
+- Changed SwiftChessDemo's original source license to MIT while documenting
+  GPLv3 compliance requirements for the default app distribution that links
   Stockfish through `StockfishEmbedded`.
 - Updated game-end handling to use ChessCore's `Game.status`,
   `Game.drawClaims`, and `Game.claimDraw(_:)` APIs for checkmate, stalemate,

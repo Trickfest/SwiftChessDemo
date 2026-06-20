@@ -7,11 +7,11 @@ trace how each module contributes to the final behavior.
 It is intended as a reference implementation for building an app with
 SwiftChessTools, not as a minimal sample.
 
-Licensing note: SwiftChessDemo is licensed under the GNU General Public License
-v3.0 because the app links with Stockfish through `../StockfishEmbedded`.
-`../SwiftChessTools` remains MIT-licensed in its own repo, but this app's
-distributed binary should be treated as a GPL-covered combined work. See
-`LICENSE` and `THIRD_PARTY.md` for details.
+Licensing note: SwiftChessDemo's original source code is licensed under the MIT
+License so it can be reused as reference app code. The default app target links
+with Stockfish through `../StockfishEmbedded`; distributing that combined
+Stockfish-linked app requires GPLv3 compliance. See `LICENSE`, `LICENSES/`, and
+`THIRD_PARTY.md` for details.
 
 Required after clone: make sure the sibling `../StockfishEmbedded` checkout has
 the required NNUE weights (Stockfish neural nets). These files are not in Git
@@ -74,8 +74,9 @@ Reference-app boundaries:
 - ChessUCI formats and parses protocol text. It does not start an engine,
   serialize searches, choose depth or MultiPV policy, or decide how analysis
   should affect UI.
-- Stockfish integration lives in this GPL demo app through `StockfishEmbedded`.
-  Apps that do not want that license posture should use a different engine
+- Stockfish integration lives in the default app target through
+  `StockfishEmbedded`. That linked distribution must comply with GPLv3. Apps
+  that do not want that license posture should use a different engine
   integration strategy.
 - The scenario system is an app-level test and demonstration harness, not a
   SwiftChessTools public API.
