@@ -2,10 +2,14 @@
 
 ## Project Structure & Module Organization
 - `SwiftChessDemo/`: SwiftUI app entry point, views, and view models.
-- `../SwiftChessTools/`: local Swift package dependency that provides
+- `../SwiftChessTools/`: sibling Swift package dependency that provides
   `ChessCore`, `ChessUI`, and `ChessUCI` command/parser helpers.
-- `../StockfishEmbedded/`: local Xcode project dependency that provides `SFEngine-iOS`.
+- `../StockfishEmbedded/`: sibling Xcode project dependency that provides `SFEngine-iOS`.
 - `SwiftChessDemo.xcodeproj/`: Xcode project; assets live in `SwiftChessDemo/Assets.xcassets`.
+
+Public and local development both expect `SwiftChessDemo`, `SwiftChessTools`,
+and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
+parent folder does not need to be a Git repo.
 
 ## Setup & Required Assets
 Stockfish NNUE weights are required to run the engine. Download them into the

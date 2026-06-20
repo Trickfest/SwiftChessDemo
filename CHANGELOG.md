@@ -92,6 +92,8 @@ for a release.
   move controls and deterministic scenario suggestions.
 - Moved embedded Stockfish lifecycle, serialized UCI search requests, timeouts,
   and cancelled suggestion-output handling into `StockfishMoveProvider`.
+- Clarified public setup documentation so SwiftChessDemo can be cloned with
+  public sibling checkouts without requiring any parent workspace repo.
 
 ### Fixed
 

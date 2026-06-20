@@ -1,7 +1,9 @@
 # Third-Party Dependencies
 
-This repo no longer vendors chess dependencies directly. It depends on sibling
-checkouts in `/Users/markharris/src/chess-workspace`:
+This repo no longer vendors chess dependencies directly. It expects
+`SwiftChessTools` and `StockfishEmbedded` to be sibling checkouts next to
+`SwiftChessDemo`. The parent folder can be any local directory; it does not
+need to be a Git repo.
 
 SwiftChessDemo's original source code is licensed under the MIT License in
 `LICENSE`. This keeps the demo useful as reference code for apps built with

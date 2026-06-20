@@ -13,9 +13,34 @@ with Stockfish through `../StockfishEmbedded`; distributing that combined
 Stockfish-linked app requires GPLv3 compliance. See `LICENSE`, `LICENSES/`, and
 `THIRD_PARTY.md` for details.
 
-Required after clone: make sure the sibling `../StockfishEmbedded` checkout has
-the required NNUE weights (Stockfish neural nets). These files are not in Git
-because they are large, but they are required to run the engine.
+Public checkout layout:
+
+SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling
+checkouts. The parent folder can be any local directory; it does not need to be
+a Git repo.
+
+```sh
+mkdir swift-chess-demo-dev
+cd swift-chess-demo-dev
+
+git clone https://github.com/Trickfest/SwiftChessDemo.git
+git clone https://github.com/Trickfest/SwiftChessTools.git
+git clone https://github.com/Trickfest/StockfishEmbedded.git
+```
+
+The resulting layout should be:
+
+```text
+swift-chess-demo-dev/
+|-- SwiftChessDemo
+|-- SwiftChessTools
+`-- StockfishEmbedded
+```
+
+Required after clone: make sure `../StockfishEmbedded` has the required NNUE
+weights (Stockfish neural nets). These files are not in Git because they are
+large, but they are required to run the engine.
+
 ```
 mkdir -p ../StockfishEmbedded/Resources/NNUE
 curl -L --fail https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue -o ../StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
@@ -168,8 +193,11 @@ Scenario files:
 - See `SwiftChessDemo/Scenarios/README.md` for scenario authoring steps,
   index-field expectations, and the manual launch environment variables.
 
-Local dependencies:
-- `../SwiftChessTools`: local Swift package products `ChessCore`, `ChessUI`,
-  and `ChessUCI`.
-- `../StockfishEmbedded`: local Xcode project dependency for `SFEngine-iOS`.
+Sibling dependencies:
+- `../SwiftChessTools`: public sibling checkout that provides the `ChessCore`,
+  `ChessUI`, and `ChessUCI` Swift package products.
+- `../StockfishEmbedded`: public sibling checkout that provides the
+  `SFEngine-iOS` Xcode project product.
+- The parent folder can be any local directory; it does not need to be a Git
+  repo.
 - Reference details live in `THIRD_PARTY.md`.
