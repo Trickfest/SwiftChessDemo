@@ -46,6 +46,10 @@ for a release.
   and black perspectives using scenario-backed deterministic opponent replies.
 - Added a broader PGN scenario corpus covering a longer opening line,
   promotion, insufficient material, castling, and en passant.
+- Added a bundled scenario index and scenario-authoring guide for documenting
+  deterministic replay fixtures.
+- Added SwiftChessDemo UI coverage that validates the scenario index against
+  bundled scenario JSON resources and PGN loading.
 
 ### Changed
 

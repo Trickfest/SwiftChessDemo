@@ -48,12 +48,18 @@ private enum PlayerSide: String, CaseIterable, Identifiable {
 struct ContentView: View {
     /// Scenario requested by launch environment, if any.
     private let requestedScenarioResult: Result<GameScenario?, GameScenarioLoadingError>
+    /// Scenario-index validation requested by launch environment, if any.
+    private let scenarioIndexValidationResult: Result<GameScenarioIndexValidationSummary, GameScenarioIndexValidationError>?
     /// Which side the user has selected in the segmented control.
     @State private var playerSide: PlayerSide
 
     /// Creates the setup view and applies scenario defaults when requested.
-    init(requestedScenarioResult: Result<GameScenario?, GameScenarioLoadingError> = GameScenarioLoader.requestedScenario()) {
+    init(
+        requestedScenarioResult: Result<GameScenario?, GameScenarioLoadingError> = GameScenarioLoader.requestedScenario(),
+        scenarioIndexValidationResult: Result<GameScenarioIndexValidationSummary, GameScenarioIndexValidationError>? = GameScenarioIndexLoader.requestedValidation()
+    ) {
         self.requestedScenarioResult = requestedScenarioResult
+        self.scenarioIndexValidationResult = scenarioIndexValidationResult
         let requestedScenario = (try? requestedScenarioResult.get()) ?? nil
         _playerSide = State(initialValue: PlayerSide(pieceColor: requestedScenario?.initialPerspective ?? .white))
     }
@@ -92,6 +98,34 @@ struct ContentView: View {
                         .accessibilityIdentifier("Setup.scenarioErrorDetail")
                 }
 
+                if let scenarioIndexValidationResult {
+                    switch scenarioIndexValidationResult {
+                    case .success(let summary):
+                        Text("Scenario index valid")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("Setup.scenarioIndexStatus")
+
+                        Text(summary.displayText)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("Setup.scenarioIndexDetail")
+
+                    case .failure(let error):
+                        Text("Scenario index error")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .accessibilityIdentifier("Setup.scenarioIndexStatus")
+
+                        Text(error.localizedDescription)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("Setup.scenarioIndexDetail")
+                    }
+                }
+
                 // The main transition into gameplay; passes config into GameView.
                 NavigationLink("Start Game") {
                     GameView(
@@ -102,7 +136,7 @@ struct ContentView: View {
                     )
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(scenarioLoadingError != nil)
+                .disabled(scenarioLoadingError != nil || scenarioIndexValidationError != nil)
 
                 Spacer()
             }
@@ -117,6 +151,11 @@ struct ContentView: View {
 
     private var scenarioLoadingError: GameScenarioLoadingError? {
         guard case .failure(let error) = requestedScenarioResult else { return nil }
+        return error
+    }
+
+    private var scenarioIndexValidationError: GameScenarioIndexValidationError? {
+        guard case .failure(let error)? = scenarioIndexValidationResult else { return nil }
         return error
     }
 }

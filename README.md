@@ -76,9 +76,12 @@ Key files to read:
   cancelled suggestion-output handling.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
   for deterministic replay fixtures.
+- `SwiftChessDemo/GameScenarioIndex.swift`: bundled scenario catalog loading and
+  validation used to catch scenario-resource drift.
 - `SwiftChessDemo/GameMoveProvider.swift`: deterministic move-provider
   abstraction used by scenario replay and scenario-backed UI tests.
-- `SwiftChessDemo/Scenarios/`: checked-in scenario JSON and PGN fixtures.
+- `SwiftChessDemo/Scenarios/`: checked-in scenario index, authoring guide, JSON
+  definitions, and PGN fixtures.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
   status, move-list, evaluation display options, selectable suggestion arrows,
@@ -107,9 +110,15 @@ Automated UI tests:
   optional `SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT` values from `0`
   through `3` so rendered arrows are deterministic without live Stockfish
   analysis.
+- Scenario-index coverage sets `SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX=1` so
+  the app validates `Scenarios/index.json`, bundled scenario JSON files, and
+  PGN loading through the same bundle path used at runtime.
 
 Scenario files:
-- Scenario JSON is the durable test description: id, title, PGN resource,
+- `SwiftChessDemo/Scenarios/index.json` is the durable scenario catalog. It
+  lists every scenario id, tags, purpose, selected metadata, and the PGN
+  resource each scenario uses.
+- Scenario JSON is the per-scenario test description: id, title, PGN resource,
   playback mode, optional perspective, optional stop ply, and expected-status
   notes.
 - PGN remains the readable source of moves. SwiftChessDemo does not check in a
@@ -120,6 +129,8 @@ Scenario files:
     scenario provide Black replies.
   - `testDrivesBlack`: expose test-only buttons for Black moves and let the
     scenario provide White replies.
+- See `SwiftChessDemo/Scenarios/README.md` for scenario authoring steps,
+  index-field expectations, and the manual launch environment variables.
 
 Local dependencies:
 - `../SwiftChessTools`: local Swift package products `ChessCore`, `ChessUI`,

@@ -656,6 +656,39 @@ final class SwiftChessDemoUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Start Game"].isEnabled)
     }
 
+    func testScenarioIndexMatchesBundledScenarioResources() throws {
+        let expectedScenarioIDs = [
+            "black-four-move-smoke",
+            "fools-mate",
+            "insufficient-material-position",
+            "promotion-to-queen",
+            "ruy-lopez-long",
+            "special-moves",
+            "stalemate-position",
+            "suggestion-line",
+            "white-four-move-smoke",
+        ]
+
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX"] = "1"
+        app.launch()
+
+        let status = try requireElement(
+            app.staticTexts["Setup.scenarioIndexStatus"].firstMatch,
+            named: "scenario index status"
+        )
+        XCTAssertEqual(status.label, "Scenario index valid")
+
+        let detail = try requireElement(
+            app.staticTexts["Setup.scenarioIndexDetail"].firstMatch,
+            named: "scenario index detail"
+        )
+        XCTAssertTrue(detail.label.contains("Validated \(expectedScenarioIDs.count) scenarios"))
+        for scenarioID in expectedScenarioIDs {
+            XCTAssertTrue(detail.label.contains(scenarioID), "Missing indexed scenario id \(scenarioID)")
+        }
+    }
+
     @discardableResult
     private func scrollUntilHittable(
         _ element: XCUIElement,

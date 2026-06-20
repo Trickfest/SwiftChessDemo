@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "black-four-move-smoke",
+      "title": "Black Four-Move Smoke",
+      "pgnResource": "four-move-smoke.pgn",
+      "playbackMode": "testDrivesBlack",
+      "stopAfterPly": 8,
+      "expectedStatus": "ongoing",
+      "tags": ["smoke", "ui-test", "black-perspective"],
+      "purpose": "UI tests drive Black through four moves while the scenario supplies deterministic White moves."
+    },
+    {
+      "id": "fools-mate",
+      "title": "Fool's Mate",
+      "pgnResource": "fools-mate.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 4,
+      "expectedStatus": "checkmate",
+      "expectedWinner": "black",
+      "tags": ["terminal", "checkmate", "automatic-replay"],
+      "purpose": "Replays a short checkmate to verify terminal status, alert presentation, and move-list updates."
+    },
+    {
+      "id": "insufficient-material-position",
+      "title": "Insufficient Material Position",
+      "pgnResource": "insufficient-material-position.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 0,
+      "expectedStatus": "draw",
+      "tags": ["terminal", "draw", "fen-start"],
+      "purpose": "Starts from a FEN-backed king-versus-king position to verify automatic insufficient-material draw handling."
+    },
+    {
+      "id": "promotion-to-queen",
+      "title": "Promotion To Queen",
+      "pgnResource": "promotion-to-queen.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 1,
+      "expectedStatus": "ongoing",
+      "tags": ["promotion", "fen-start", "automatic-replay"],
+      "purpose": "Starts from a FEN-backed position and promotes a pawn to verify PGN promotion replay."
+    },
+    {
+      "id": "ruy-lopez-long",
+      "title": "Ruy Lopez Long Replay",
+      "pgnResource": "ruy-lopez-long.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 20,
+      "expectedStatus": "ongoing",
+      "tags": ["long-game", "opening", "automatic-replay"],
+      "purpose": "Exercises repeated board, status, move-list, and replay updates over a longer opening line."
+    },
+    {
+      "id": "special-moves",
+      "title": "Castling And En Passant",
+      "pgnResource": "special-moves.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 11,
+      "expectedStatus": "ongoing",
+      "tags": ["castling", "en-passant", "automatic-replay"],
+      "purpose": "Exercises castling and en passant SAN through automatic scenario replay."
+    },
+    {
+      "id": "stalemate-position",
+      "title": "Stalemate Position",
+      "pgnResource": "stalemate-position.pgn",
+      "playbackMode": "automaticReplay",
+      "stopAfterPly": 0,
+      "expectedStatus": "draw",
+      "tags": ["terminal", "stalemate", "fen-start"],
+      "purpose": "Starts from a FEN-backed stalemate to verify zero-move terminal scenarios."
+    },
+    {
+      "id": "suggestion-line",
+      "title": "Suggestion Line",
+      "pgnResource": "suggestion-line.pgn",
+      "playbackMode": "testDrivesWhite",
+      "stopAfterPly": 8,
+      "expectedStatus": "ongoing",
+      "tags": ["suggestions", "ui-test", "white-perspective"],
+      "purpose": "Provides deterministic ranked suggestion arrows from the scenario's future White moves."
+    },
+    {
+      "id": "white-four-move-smoke",
+      "title": "White Four-Move Smoke",
+      "pgnResource": "four-move-smoke.pgn",
+      "playbackMode": "testDrivesWhite",
+      "stopAfterPly": 8,
+      "expectedStatus": "ongoing",
+      "tags": ["smoke", "ui-test", "white-perspective"],
+      "purpose": "UI tests drive White through four moves while the scenario supplies deterministic Black replies."
+    }
+  ]
+}
