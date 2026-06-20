@@ -19,7 +19,7 @@ Keep downloaded NNUE files out of commits.
 ## Build, Test, and Development Commands
 - Xcode: open `SwiftChessDemo.xcodeproj` and run the `SwiftChessDemo` app target.
 - CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug build`
-- CLI UI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
+- CLI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
 
 ## Coding Style & Naming Conventions
 - Use 4-space indentation and follow Swift API Design Guidelines.
@@ -39,9 +39,13 @@ not change that package's license. Dependency/license changes must update
 `THIRD_PARTY.md`.
 
 ## Testing Guidelines
-- Run the SwiftChessDemo UI tests after changing setup-screen, game-screen,
-  in-game piece-set selection, in-game board-theme selection, player-side
-  setup, or move-flow behavior.
+- Run the SwiftChessDemo tests after changing setup-screen, game-screen,
+  scenario loading, scenario index validation, move-provider behavior, in-game
+  piece-set selection, in-game board-theme selection, player-side setup, or
+  move-flow behavior.
+- The shared scheme includes app-hosted unit tests and UI tests. The unit tests
+  cover scenario loading, scenario-index validation failures, and deterministic
+  move-provider behavior.
 - The move-flow UI tests cover four full moves from both white and black
   perspectives. They launch named scenarios in `testDrivesWhite` or
   `testDrivesBlack` mode so engine-side moves are deterministic and not coupled
@@ -51,6 +55,9 @@ not change that package's license. Dependency/license changes must update
   thinking pause for tests that still exercise live Stockfish replies. Normal
   app launches should not set these flags and should continue to exercise
   Stockfish.
+- Scenario launches use `SWIFT_CHESS_DEMO_SCENARIO=<scenario-id>` and optional
+  `SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=<seconds>`. Scenario-index validation
+  uses `SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX=1`.
 - If you change shared chess logic/UI, run `swift test` from `../SwiftChessTools`.
 - If you change engine integration, build `../StockfishEmbedded` smoke targets.
 

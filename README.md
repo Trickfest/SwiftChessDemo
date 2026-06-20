@@ -4,6 +4,8 @@ SwiftChessDemo is a demo app that demonstrates how to combine local chess
 libraries into a realistic, shippable SwiftUI chess experience.
 The code is intentionally small, readable, and heavily commented so you can
 trace how each module contributes to the final behavior.
+It is intended as a reference implementation for building an app with
+SwiftChessTools, not as a minimal sample.
 
 Licensing note: SwiftChessDemo is licensed under the GNU General Public License
 v3.0 because the app links with Stockfish through `../StockfishEmbedded`.
@@ -20,21 +22,23 @@ curl -L --fail https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue -o .
 ```
 
 How it all fits together:
-- `ChessUI` renders the board UI and emits user move gestures.
-- `ChessUI` also supplies runtime lists of bundled chess piece sets and board
-  themes used by the in-game display selectors, plus coordinate-label
-  visibility for the in-game `Coordinates` switch.
-- The game screen uses `ChessGameStatusView` for visible turn/status display
-  and draw-claim actions.
-- The game screen uses `ChessMoveListView` with `ChessCore` move records to
-  show SAN move history as the game progresses.
-- The game screen uses `ChessEvaluationBar` for optional evaluation display.
-- The game screen can show zero, one, two, or three app-supplied
-  `ChessBoardArrow` move suggestions from Stockfish MultiPV analysis.
-- `ChessCore` owns the rules engine, legal move generation, and game state.
-- `ChessUCI` formats Stockfish command strings and parses `info` and
-  `bestmove` lines into typed values.
-- The sibling `../StockfishEmbedded` project supplies engine moves over the UCI protocol via `SFEngine`.
+- `ChessCore` owns board state, legal move generation, move application, PGN
+  parsing, FEN serialization, SAN move records, game status, and draw claims.
+- `ChessUI` renders the board and emits user move gestures. It also supplies
+  the visible chessboard components used by the demo: piece sets, board
+  themes, coordinate labels, `ChessGameStatusView`, `ChessMoveListView`,
+  `ChessEvaluationBar`, and app-supplied `ChessBoardArrow` suggestions.
+- `ChessUCI` formats UCI command strings and parses `info` and `bestmove`
+  lines into typed values.
+- SwiftChessDemo owns app policy: view-model state, engine timing, move-provider
+  selection, user display preferences, error handling, and when validated moves
+  should mutate the game.
+- `StockfishMoveProvider` wraps the embedded Stockfish lifecycle and serialized
+  UCI searches for live play.
+- `ScenarioReplayMoveProvider` supplies deterministic non-Stockfish moves for
+  scenario replay and scenario-backed tests.
+- The sibling `../StockfishEmbedded` project supplies engine moves over the UCI
+  protocol via `SFEngine`.
 
 Data flow at a glance:
 - User moves on the board -> `ChessUI` -> `GameViewModel.handleUserMove`.
@@ -60,6 +64,21 @@ Data flow at a glance:
   PGN is parsed through `ChessCore.PGNSerializer`, concrete moves are held in
   memory, and the same move-application path updates the board, move list, and
   status UI without starting Stockfish.
+
+Reference-app boundaries:
+- SwiftChessTools provides reusable chess building blocks; SwiftChessDemo shows
+  one app-owned composition of those blocks.
+- ChessUI renders app-supplied state. It does not decide legal policy, own the
+  game model, run Stockfish, choose suggestion moves, or apply moves on behalf
+  of the app.
+- ChessUCI formats and parses protocol text. It does not start an engine,
+  serialize searches, choose depth or MultiPV policy, or decide how analysis
+  should affect UI.
+- Stockfish integration lives in this GPL demo app through `StockfishEmbedded`.
+  Apps that do not want that license posture should use a different engine
+  integration strategy.
+- The scenario system is an app-level test and demonstration harness, not a
+  SwiftChessTools public API.
 
 Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the human side.
@@ -91,7 +110,18 @@ Key files to read:
   perspectives.
 
 Automated tests:
-- Run the suite with `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`.
+- Run the suite from this repo root:
+
+```sh
+xcodebuild -project SwiftChessDemo.xcodeproj \
+  -scheme SwiftChessDemo \
+  -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -derivedDataPath .build/xcode-swiftchessdemo \
+  -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
+  test
+```
+
 - The shared scheme includes both fast scenario unit tests and full UI tests.
   The unit tests run inside the demo app host so `Bundle.main` loads the same
   bundled scenarios the app uses at runtime.

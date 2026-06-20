@@ -82,6 +82,8 @@ for a release.
 - Changed the in-game suggestions selector to filter cached three-line MultiPV
   analysis instead of changing the Stockfish MultiPV count for each visible
   arrow count.
+- Clarified reference-app documentation for SwiftChessTools integration,
+  scenario authoring, automated tests, and app-owned engine/scenario boundaries.
 - Isolated deterministic non-Stockfish moves behind a `GameMoveProvider`
   abstraction so scenario replay and scenario-backed UI tests do not live
   directly in `GameViewModel`.

@@ -1,10 +1,14 @@
 # SwiftChessDemo Scenarios
 
-SwiftChessDemo scenarios are deterministic game fixtures used by UI tests,
-manual simulator runs, and future reference-app demonstrations. A scenario is
+SwiftChessDemo scenarios are deterministic game fixtures used by unit tests, UI
+tests, manual simulator runs, and reference-app demonstrations. A scenario is
 defined by one JSON file plus one PGN file. The app parses the PGN at runtime
 and keeps the normalized move list in memory; no generated move-list artifact is
 checked in.
+
+The scenario system is part of the demo app's test and demonstration harness.
+It is not a SwiftChessTools API. The reusable piece is `ChessCore` PGN parsing
+and move validation; the scenario catalog and replay provider are app code.
 
 ## Files
 
@@ -27,7 +31,6 @@ Scenario files use this shape:
   "initialPerspective": "white",
   "stopAfterPly": 8,
   "expectedStatus": "ongoing",
-  "expectedWinner": "black",
   "notes": "Maintainer-facing notes."
 }
 ```
@@ -46,8 +49,8 @@ Optional fields:
 
 - `initialPerspective`: `white` or `black`. If omitted, test-driven scenarios
   use the test-driven side and automatic scenarios default to White.
-- `stopAfterPly`: One-based ply where replay should stop. If omitted, replay
-  uses the full PGN.
+- `stopAfterPly`: Number of plies to replay before stopping. Use `0` for
+  FEN-only terminal scenarios. If omitted, replay uses the full PGN.
 - `expectedStatus`: Documentation and test metadata such as `ongoing`, `draw`,
   or `checkmate`.
 - `expectedWinner`: `white` or `black` for decisive terminal scenarios.
@@ -100,11 +103,22 @@ Index-only fields:
 3. Add `<scenario-id>.json` with the required fields and any useful optional
    metadata.
 4. Add a matching entry to `index.json`, keeping entries sorted by `id`.
-5. Add or update UI-test coverage when the scenario protects a specific
+5. Add or update unit or UI coverage when the scenario protects a specific
    behavior.
-6. Run the SwiftChessDemo UI tests. The scenario-index test validates that every
-   indexed scenario exists, every scenario JSON is indexed, metadata matches,
-   and PGNs load through the app bundle.
+6. Run the SwiftChessDemo automated tests. The unit tests validate scenario
+   loading and move-provider behavior. The scenario-index tests validate that
+   every indexed scenario exists, every scenario JSON is indexed, metadata
+   matches, and PGNs load through the app bundle.
+
+The current corpus covers:
+
+- white-driven and black-driven four-move smoke flows
+- deterministic suggestion-arrow lines
+- Fool's Mate checkmate
+- a longer Ruy Lopez opening replay
+- promotion from a FEN-backed position
+- castling and en passant
+- FEN-backed insufficient-material and stalemate terminal positions
 
 ## Manual Launch
 
@@ -119,3 +133,7 @@ SWIFT_CHESS_DEMO_SCENARIO=fools-mate \
 SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=1.2 \
 xcrun simctl launch --terminate-running-process <simulator-udid> trickfest.SwiftChessDemo
 ```
+
+Validate the bundled scenario index through the app by launching with
+`SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX=1`. The setup screen reports whether
+the index and bundled scenario resources agree.
