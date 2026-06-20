@@ -117,8 +117,9 @@ Initial public release.
 
 ### Fixed
 
-- Fixed GitHub Actions simulator selection so CI lets Xcode resolve the latest
-  iPhone 17 Pro simulator instead of reusing a stale `simctl` UDID.
+- Fixed GitHub Actions simulator selection by pinning CI to the macOS 26 runner
+  and letting Xcode resolve the latest iPhone 17 Pro simulator instead of
+  reusing a stale `simctl` UDID.
 - Hardened scenario-backed UI smoke tests so Black-side startup works whether
   the opening scripted move is still pending or has already reached the board.
 - Fixed suggestion-arrow engine analysis so changing suggestion counts and

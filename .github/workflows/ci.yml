@@ -12,7 +12,7 @@ permissions:
 jobs:
   xcode-tests:
     name: Xcode Tests
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - name: Check out SwiftChessDemo
