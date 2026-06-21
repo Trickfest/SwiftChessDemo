@@ -13,6 +13,21 @@ with Stockfish through `../StockfishEmbedded`; distributing that combined
 Stockfish-linked app requires GPLv3 compliance. See `LICENSE`, `LICENSES/`, and
 `THIRD_PARTY.md` for details.
 
+## Screenshots
+
+The demo is designed to show the same app-owned chess experience adapting
+between regular-width iPad layouts and compact iPhone layouts.
+
+<p>
+  <img src="Images/swiftchessdemo-ipad-gameplay.jpg" alt="SwiftChessDemo gameplay on iPad Pro, showing the board, evaluation bar, preferences, and move list." width="640">
+</p>
+
+<p>
+  <img src="Images/swiftchessdemo-iphone-gameplay.jpg" alt="SwiftChessDemo gameplay on iPhone, showing the compact move list above the board and preferences below." width="360">
+</p>
+
+## Setup
+
 Public checkout layout:
 
 SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling

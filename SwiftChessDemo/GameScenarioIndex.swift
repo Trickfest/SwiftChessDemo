@@ -96,7 +96,7 @@ enum GameScenarioIndexLoader {
     static func validateIndex(bundle: Bundle = .main) -> Result<GameScenarioIndexValidationSummary, GameScenarioIndexValidationError> {
         do {
             let index = try loadIndex(bundle: bundle)
-            var issues = validate(index: index, bundle: bundle)
+            let issues = validate(index: index, bundle: bundle)
 
             if issues.isEmpty {
                 return .success(GameScenarioIndexValidationSummary(scenarioIDs: index.scenarios.map(\.id)))

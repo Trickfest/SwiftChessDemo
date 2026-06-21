@@ -9,6 +9,18 @@ for a release. Tagged releases use dated version headings.
 
 No unreleased changes.
 
+## 1.0.1 - 2026-06-21
+
+### Added
+
+- Added iPad and iPhone gameplay screenshots to the README so the public repo
+  shows the reference app's regular-width and compact layouts.
+
+### Fixed
+
+- Removed an Xcode warning from scenario-index validation by making an
+  immutable local value explicit.
+
 ## 1.0.0 - 2026-06-20
 
 Initial public release.
