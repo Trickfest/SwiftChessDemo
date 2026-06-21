@@ -9,6 +9,13 @@ for a release. Tagged releases use dated version headings.
 
 No unreleased changes.
 
+## 1.0.2 - 2026-06-21
+
+### Fixed
+
+- Replaced the README iPhone screenshot with a normal gameplay capture that
+  does not show UI-test diagnostics.
+
 ## 1.0.1 - 2026-06-21
 
 ### Added
