@@ -12,11 +12,10 @@ and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
 parent folder does not need to be a Git repo.
 
 ## Setup & Required Assets
-Stockfish NNUE weights are required to run the engine. Download them into the
-sibling `StockfishEmbedded` checkout after clone:
+Stockfish NNUE weights are required to run the engine. Initialize the sibling
+`StockfishEmbedded` checkout after clone:
 ```sh
-mkdir -p ../StockfishEmbedded/Resources/NNUE
-curl -L --fail https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue -o ../StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
+(cd ../StockfishEmbedded && Scripts/download-nnue.sh)
 ```
 Keep downloaded NNUE files out of commits.
 

@@ -52,14 +52,18 @@ swift-chess-demo-dev/
 `-- StockfishEmbedded
 ```
 
-Required after clone: make sure `../StockfishEmbedded` has the required NNUE
-weights (Stockfish neural nets). These files are not in Git because they are
-large, but they are required to run the engine.
+Required after clone: initialize the sibling `../StockfishEmbedded` checkout
+using its NNUE setup instructions. Those Stockfish neural-net files are not in
+Git because they are large, but they are required to run the engine.
 
 ```
-mkdir -p ../StockfishEmbedded/Resources/NNUE
-curl -L --fail https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue -o ../StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
+(cd StockfishEmbedded && Scripts/download-nnue.sh)
 ```
+
+See `../StockfishEmbedded/README.md` or
+`../StockfishEmbedded/Resources/NNUE/README.md` for the authoritative engine
+asset setup. SwiftChessDemo intentionally does not duplicate the exact NNUE
+filename because it changes when StockfishEmbedded updates vendored Stockfish.
 
 How it all fits together:
 - `ChessCore` owns board state, legal move generation, move application, PGN

@@ -34,11 +34,7 @@ jobs:
           path: StockfishEmbedded
 
       - name: Download Stockfish NNUE weights
-        run: |
-          mkdir -p StockfishEmbedded/Resources/NNUE
-          curl -L --fail --retry 3 --retry-delay 5 \
-            https://tests.stockfishchess.org/api/nn/nn-83a0d6daf7e5.nnue \
-            -o StockfishEmbedded/Resources/NNUE/nn-83a0d6daf7e5.nnue
+        run: StockfishEmbedded/Scripts/download-nnue.sh
 
       - name: Run SwiftChessDemo unit tests
         working-directory: SwiftChessDemo
