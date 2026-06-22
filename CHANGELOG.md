@@ -7,11 +7,16 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+No unreleased changes.
+
+## 1.0.3 - 2026-06-22
+
 ### Changed
 
 - Delegated Stockfish NNUE setup to the sibling `StockfishEmbedded` checkout so
   SwiftChessDemo no longer duplicates the engine network filename in setup
   docs or CI.
+- Updated GitHub Actions checkout usage to `actions/checkout@v7`.
 
 ## 1.0.2 - 2026-06-21
 
