@@ -17,18 +17,18 @@ jobs:
 
     steps:
       - name: Check out SwiftChessDemo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: SwiftChessDemo
 
       - name: Check out SwiftChessTools
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Trickfest/SwiftChessTools
           path: SwiftChessTools
 
       - name: Check out StockfishEmbedded
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Trickfest/StockfishEmbedded
           path: StockfishEmbedded
