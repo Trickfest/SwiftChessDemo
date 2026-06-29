@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -9,8 +9,54 @@
 //
 
 import ChessCore
+import ChessUI
+import ChessUCI
 @testable import SwiftChessDemo
 import XCTest
+
+@MainActor
+final class ArasanMoveProviderIntegrationTests: XCTestCase {
+    func testArasanProviderReportsLargeMaterialEvaluation() async throws {
+        let expectedScore = expectation(description: "Arasan reports a queen-sized score")
+        var didFulfillExpectedScore = false
+        var observedScores: [Int] = []
+
+        let provider = ArasanMoveProvider { event in
+            guard case .output(.info(let info), let request) = event,
+                  let score = info.whiteRelativeScore(sideToMove: request.sideToMove)
+            else {
+                return
+            }
+
+            if case .centipawns(let centipawns) = score {
+                observedScores.append(centipawns)
+
+                if centipawns >= 800, !didFulfillExpectedScore {
+                    didFulfillExpectedScore = true
+                    expectedScore.fulfill()
+                }
+            }
+        }
+        defer { provider.stop() }
+
+        provider.startOrQueueSearch(
+            EngineSearchRequest(
+                engineKind: .arasan,
+                purpose: .suggestions,
+                fen: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                sideToMove: .white,
+                depth: 1,
+                multiPVCount: 1
+            )
+        )
+
+        await fulfillment(of: [expectedScore], timeout: 10)
+        XCTAssertTrue(
+            observedScores.contains { $0 >= 800 },
+            "Expected a queen-sized Arasan evaluation, got \(observedScores)"
+        )
+    }
+}
 
 @MainActor
 final class GameScenarioLoaderTests: XCTestCase {
@@ -314,20 +360,59 @@ final class GameViewModelEngineActivityTests: XCTestCase {
         XCTAssertFalse(GameViewModel.EngineActivityState.idle.showsProgress)
         XCTAssertEqual(GameViewModel.EngineActivityState.idle.accessibilityValue, "Idle")
 
-        let thinking = GameViewModel.EngineActivityState.thinking(depth: 12)
+        let thinking = GameViewModel.EngineActivityState.thinking(engine: .stockfish, depth: 12)
         XCTAssertEqual(thinking.message, "Stockfish thinking at depth 12...")
         XCTAssertTrue(thinking.showsProgress)
 
-        let timeout = GameViewModel.EngineActivityState.timeoutWaiting(depth: 30)
+        let timeout = GameViewModel.EngineActivityState.timeoutWaiting(engine: .arasan, depth: 30)
         XCTAssertEqual(
             timeout.message,
-            "Depth 30 timed out; waiting for best move..."
+            "Arasan depth 30 timed out; waiting for best move..."
         )
         XCTAssertTrue(timeout.showsProgress)
 
         let notice = GameViewModel.EngineActivityState.notice("Stockfish timed out; played the best move found so far.")
         XCTAssertEqual(notice.accessibilityValue, "Stockfish timed out; played the best move found so far.")
         XCTAssertFalse(notice.showsProgress)
+    }
+
+    func testLiveGameCanSwitchSelectedEngineWhenIdle() {
+        let viewModel = GameViewModel(
+            playerColor: .white,
+            pieceSet: .artDecoMonochrome,
+            boardTheme: .classicGreen
+        )
+
+        XCTAssertTrue(viewModel.showsEngineSelection)
+        XCTAssertTrue(viewModel.canSwitchEngine)
+        XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
+
+        viewModel.setSelectedEngineKind(DemoEngineKind.arasan)
+
+        XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.arasan)
+        XCTAssertEqual(viewModel.evaluation, ChessEvaluation.unavailable)
+
+        viewModel.setSelectedEngineKind(DemoEngineKind.stockfish)
+
+        XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
+    }
+
+    func testScenarioGameDoesNotExposeLiveEngineSelection() throws {
+        let scenario = try GameScenarioLoader.loadScenario(id: "fools-mate", bundle: .main)
+        let viewModel = GameViewModel(
+            playerColor: .white,
+            pieceSet: .artDecoMonochrome,
+            boardTheme: .classicGreen,
+            scenario: scenario
+        )
+
+        XCTAssertFalse(viewModel.showsEngineSelection)
+        XCTAssertFalse(viewModel.canSwitchEngine)
+        XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
+
+        viewModel.setSelectedEngineKind(DemoEngineKind.arasan)
+
+        XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
     }
 }
 

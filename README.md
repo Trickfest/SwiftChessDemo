@@ -10,8 +10,9 @@ SwiftChessTools, not as a minimal sample.
 Licensing note: SwiftChessDemo's original source code is licensed under the MIT
 License so it can be reused as reference app code. The default app target links
 with Stockfish through `../StockfishEmbedded`; distributing that combined
-Stockfish-linked app requires GPLv3 compliance. See `LICENSE`, `LICENSES/`, and
-`THIRD_PARTY.md` for details.
+Stockfish-linked app requires GPLv3 compliance. The app can also use the
+permissively licensed `ArasanEmbedded` Swift package as a second embedded engine.
+See `LICENSE`, `LICENSES/`, and `THIRD_PARTY.md` for details.
 
 ## Screenshots
 
@@ -31,8 +32,9 @@ between regular-width iPad layouts and compact iPhone layouts.
 Public checkout layout:
 
 SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling
-checkouts. The parent folder can be any local directory; it does not need to be
-a Git repo.
+checkouts. It resolves `ArasanEmbedded` from GitHub through Swift Package
+Manager. The parent folder can be any local directory; it does not need to be a
+Git repo.
 
 ```sh
 mkdir swift-chess-demo-dev
@@ -79,10 +81,14 @@ How it all fits together:
   error handling, and when validated moves should mutate the game.
 - `StockfishMoveProvider` wraps the embedded Stockfish lifecycle and serialized
   UCI searches for live play.
-- `ScenarioReplayMoveProvider` supplies deterministic non-Stockfish moves for
+- `ArasanMoveProvider` wraps the embedded Arasan lifecycle and the same
+  serialized UCI search contract for live play.
+- `ScenarioReplayMoveProvider` supplies deterministic non-live-engine moves for
   scenario replay and scenario-backed tests.
 - The sibling `../StockfishEmbedded` project supplies engine moves over the UCI
   protocol via `SFEngine`.
+- The `ArasanEmbedded` Swift package supplies an alternative engine over the UCI
+  protocol via `ArasanEngine`.
 
 Data flow at a glance:
 - User moves on the board -> `ChessUI` -> `GameViewModel.handleUserMove`.
@@ -92,61 +98,66 @@ Data flow at a glance:
   `Game.status` and draw-claim APIs, then rendered with `ChessGameStatusView`.
 - Legal moves are also captured as `ChessMoveRecord` values before they are
   applied, so `ChessMoveListView` can render SAN without owning the game.
-- When it is the engine's turn, `StockfishMoveProvider` uses `ChessUCI` to
-  format the UCI handshake, `position`, and `go` command strings sent to
-  Stockfish.
+- When it is the engine's turn, the selected live engine provider uses
+  `ChessUCI` to format the UCI `position` and `go` command strings sent to the
+  embedded engine.
 - Opponent searches start immediately after the user's move. SwiftChessDemo
   keeps a minimum visible thinking interval before applying very fast replies,
   but it does not add that interval on top of slower real searches.
-- Stockfish streams `info` lines through `StockfishMoveProvider`, where
+- The selected live engine streams `info` lines through its provider, where
   `ChessUCI` parses them into White-positive evaluation values for
   `ChessEvaluationBar`.
-- If a Stockfish search reaches the demo timeout, SwiftChessDemo asks the
+- If a live engine search reaches the demo timeout, SwiftChessDemo asks the
   engine to stop, applies the returned `bestmove` when available, and uses the
   existing status display for a brief nonfatal notice that the timeout fallback
   was used before returning to the normal game status.
-- When suggestions are enabled, SwiftChessDemo asks Stockfish for up to three
-  MultiPV analysis lines on the human player's turn, caches the ranked first
-  moves, and filters the visible ChessUI arrows according to the user's
+- When suggestions are enabled, SwiftChessDemo asks the selected engine for up
+  to three MultiPV analysis lines on the human player's turn, caches the ranked
+  first moves, and filters the visible ChessUI arrows according to the user's
   suggestion-count picker. ChessUI renders the arrows but does not decide which
   moves to suggest.
-- Stockfish returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
+- The engine returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
 - Scenario replay uses a named JSON scenario plus a bundled PGN fixture. The
   PGN is parsed through `ChessCore.PGNSerializer`, concrete moves are held in
   memory, and the same move-application path updates the board, move list, and
-  status UI without starting Stockfish.
+  status UI without starting a live engine.
 
 Reference-app boundaries:
 - SwiftChessTools provides reusable chess building blocks; SwiftChessDemo shows
   one app-owned composition of those blocks.
 - ChessUI renders app-supplied state. It does not decide legal policy, own the
-  game model, run Stockfish, choose suggestion moves, or apply moves on behalf
-  of the app.
+  game model, run engines, choose suggestion moves, or apply moves on behalf of
+  the app.
 - ChessUCI formats and parses protocol text. It does not start an engine,
   serialize searches, choose depth or MultiPV policy, or decide how analysis
   should affect UI.
 - Stockfish integration lives in the default app target through
-  `StockfishEmbedded`. That linked distribution must comply with GPLv3. Apps
-  that do not want that license posture should use a different engine
-  integration strategy.
+  `StockfishEmbedded`. That linked distribution must comply with GPLv3.
+  `ArasanEmbedded` is also available from the same game screen as a
+  permissively licensed engine option.
 - The scenario system is an app-level test and demonstration harness, not a
   SwiftChessTools public API.
 
 Key files to read:
 - `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the human side.
-- `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme, and
-  coordinate-label switching during play, visible ChessUI status and move-list
-  components, status-row engine activity and timeout notices, optional
-  evaluation-bar display, in-game engine-depth control, selectable
-  move-suggestion arrows, compact horizontal move-list layout on iPhone, and
-  navigation flow.
+- `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme,
+  engine-selection, and coordinate-label switching during play, visible ChessUI
+  status and move-list components, status-row engine activity and timeout
+  notices, optional evaluation-bar display, in-game engine-depth control,
+  selectable move-suggestion arrows, compact horizontal move-list layout on
+  iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
-  fallback, evaluation normalization, Stockfish MultiPV suggestion mapping, and
-  ChessCore game-status integration.
+  fallback, evaluation normalization, selected-engine MultiPV suggestion
+  mapping, and ChessCore game-status integration.
 - `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
   serialized search requests, UCI command formatting/parsing, timeout `stop`
   handling, and cancelled suggestion-output handling.
+- `SwiftChessDemo/ArasanMoveProvider.swift`: embedded Arasan lifecycle,
+  serialized search requests, UCI command formatting/parsing, timeout `stop`
+  handling, and cancelled suggestion-output handling.
+- `SwiftChessDemo/DemoEngineProvider.swift`: app-local engine abstraction and
+  shared request/event models used by live engine providers.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
   for deterministic replay fixtures.
 - `SwiftChessDemo/GameScenarioIndex.swift`: bundled scenario catalog loading and
@@ -159,9 +170,9 @@ Key files to read:
   scenario loading, index validation, and deterministic move-provider behavior.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
-  status, move-list, evaluation display options, selectable suggestion arrows,
-  scenario replay, and four-full-move game flows from both white and black
-  perspectives.
+  live-engine selection, status, move-list, evaluation display options,
+  selectable suggestion arrows, scenario replay, and four-full-move game flows
+  from both white and black perspectives.
 
 Automated tests:
 - Run the suite from this repo root:
@@ -177,10 +188,10 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
 ```
 
 - GitHub Actions runs the app-hosted unit tests after checking out
-  `SwiftChessDemo`, `SwiftChessTools`, and `StockfishEmbedded` as siblings and
-  downloading the Stockfish NNUE file. The full UI suite is the local release
-  gate because hosted simulator UI tests are slower and more environment
-  sensitive.
+  `SwiftChessDemo`, `SwiftChessTools`, and `StockfishEmbedded` as siblings,
+  resolving `ArasanEmbedded`, and downloading the Stockfish NNUE file. The full
+  UI suite is the local release gate because hosted simulator UI tests are
+  slower and more environment sensitive.
 - The shared local scheme includes both fast scenario unit tests and full UI
   tests. The unit tests run inside the demo app host so `Bundle.main` loads the
   same bundled scenarios the app uses at runtime.
@@ -191,19 +202,18 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
 - The game-flow UI tests run named scenarios in `testDrivesWhite` or
   `testDrivesBlack` mode so one side is driven by UI-test taps while the
   scenario supplies the opposing replies. This keeps move-flow coverage
-  deterministic without starting Stockfish.
+  deterministic without starting a live engine.
 - The game-flow tests set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` to keep
   simulator runs fast. UI tests that exercise live engine replies can also set
   `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to reduce the visible
-  thinking pause. Normal app launches do not set these flags and continue to
-  use Stockfish for engine moves.
+  thinking pause. Normal app launches do not set these flags and default to
+  Stockfish unless the player selects Arasan from the game screen.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
-  is deterministic without live Stockfish analysis.
+  is deterministic without live engine analysis.
 - Suggestion-arrow UI coverage uses scenario-backed move suggestions plus
   optional `SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT` values from `0`
-  through `3` so rendered arrows are deterministic without live Stockfish
-  analysis.
+  through `3` so rendered arrows are deterministic without live engine analysis.
 - Scenario-index coverage sets `SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX=1` so
   the app validates `Scenarios/index.json`, bundled scenario JSON files, and
   PGN loading through the same bundle path used at runtime.
@@ -218,7 +228,7 @@ Scenario files:
 - PGN remains the readable source of moves. SwiftChessDemo does not check in a
   normalized move-list artifact; it parses and validates the PGN on launch.
 - Supported playback modes are:
-  - `automaticReplay`: replay both sides without user input or Stockfish.
+  - `automaticReplay`: replay both sides without user input or a live engine.
   - `testDrivesWhite`: expose test-only buttons for White moves and let the
     scenario provide Black replies.
   - `testDrivesBlack`: expose test-only buttons for Black moves and let the
@@ -231,6 +241,8 @@ Sibling dependencies:
   `ChessUI`, and `ChessUCI` Swift package products.
 - `../StockfishEmbedded`: public sibling checkout that provides the
   `SFEngine-iOS` Xcode project product.
+- `ArasanEmbedded`: public Swift package dependency resolved from GitHub that
+  provides the `ArasanEmbedded` product.
 - The parent folder can be any local directory; it does not need to be a Git
   repo.
 - Reference details live in `THIRD_PARTY.md`.

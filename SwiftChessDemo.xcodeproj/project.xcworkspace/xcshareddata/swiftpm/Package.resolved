@@ -1,6 +1,15 @@
 {
-  "originHash" : "71d4b28687ba27e593069f705837997191ea3cb7d7f8d07297e34cab033aad7c",
+  "originHash" : "c5755fcc063a0eb9b8ca56227b4a814af3dc50166736dedb44b6f3990c563ef0",
   "pins" : [
+    {
+      "identity" : "arasanembedded",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Trickfest/ArasanEmbedded.git",
+      "state" : {
+        "revision" : "ae4ca2c561894ed461c65c48cab80d454f4d5fd5",
+        "version" : "1.0.1"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

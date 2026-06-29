@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -157,6 +157,27 @@ final class SwiftChessDemoUITests: XCTestCase {
             XCTAssertTrue((board.value as? String)?.contains("Board: \(boardThemeName)") == true)
             attachScreenshot(from: app, named: "SwiftChessDemo Board - \(boardThemeName)")
         }
+    }
+
+    func testGameEnginePickerSelectsLiveEngineAndUpdatesBoardState() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let picker = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.enginePicker"].firstMatch,
+            named: "game engine picker",
+            in: app
+        )
+
+        XCTAssertEqual(picker.value as? String, "Stockfish")
+        try waitForGameBoardState(containing: "Engine: Stockfish", in: app, named: "initial engine")
+
+        try select("Arasan", from: picker, in: app)
+
+        try waitForElementValue(picker, expectedValue: "Arasan", named: "game engine picker")
+        try waitForGameBoardState(containing: "Engine: Arasan", in: app, named: "selected engine")
     }
 
     func testGameCoordinateLabelsToggleUpdatesBoardState() throws {

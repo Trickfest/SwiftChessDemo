@@ -7,7 +7,23 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
-No unreleased changes.
+### Added
+
+- Added `ArasanEmbedded` as a second live engine option alongside Stockfish.
+- Added an in-game engine picker for live games so future searches and
+  suggestion analysis can use either Stockfish or Arasan.
+
+### Changed
+
+- Generalized live engine request handling so Stockfish and Arasan share the
+  same serialized search, timeout, evaluation, and suggestion-arrow flow.
+- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.1 so Arasan
+  evaluation output reflects material imbalances correctly on Apple Silicon.
+
+### Fixed
+
+- Added Demo integration coverage that verifies Arasan reports a queen-sized
+  material advantage through the app's normal UCI parsing path.
 
 ## 1.0.3 - 2026-06-22
 

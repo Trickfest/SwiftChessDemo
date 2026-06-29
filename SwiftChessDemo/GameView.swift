@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -266,7 +266,8 @@ struct GameView: View {
             + "Coordinates: \(coordinateState), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Depth: \(viewModel.engineDepth), "
-            + "Engine: \(viewModel.engineActivity.accessibilityValue), "
+            + "Engine: \(viewModel.selectedEngineKind.displayName), "
+            + "Engine status: \(viewModel.engineActivity.accessibilityValue), "
             + viewModel.scenarioAccessibilityValue
             + "FEN: \(viewModel.positionFEN)"
     }
@@ -298,6 +299,7 @@ struct GameView: View {
                     pieceSetControl
                     boardThemeControl
                     suggestionArrowsControl
+                    engineSelectionControl
                     coordinateLabelsToggle
                     gameStatusToggle
                     moveListToggle
@@ -318,6 +320,8 @@ struct GameView: View {
             }
 
             suggestionArrowsControl
+
+            engineSelectionControl
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -471,6 +475,31 @@ struct GameView: View {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("Game.suggestionCountPicker")
         .accessibilityValue(suggestionArrowOptionTitle(for: viewModel.suggestionArrowCount))
+    }
+
+    @ViewBuilder
+    private var engineSelectionControl: some View {
+        if viewModel.showsEngineSelection {
+            Menu {
+                ForEach(DemoEngineKind.allCases) { engineKind in
+                    Button(engineKind.displayName) {
+                        viewModel.setSelectedEngineKind(engineKind)
+                    }
+                    .disabled(engineKind == viewModel.selectedEngineKind)
+                }
+            } label: {
+                displayControlLabel(
+                    title: "Engine",
+                    value: viewModel.selectedEngineKind.displayName,
+                    systemImage: "cpu"
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .buttonStyle(.bordered)
+            .disabled(!viewModel.canSwitchEngine)
+            .accessibilityIdentifier("Game.enginePicker")
+            .accessibilityValue(viewModel.selectedEngineKind.displayName)
+        }
     }
 
     private var engineDepthControl: some View {

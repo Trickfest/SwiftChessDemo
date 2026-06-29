@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -18,7 +18,7 @@ import ChessUCI
 /// Teaching focus:
 /// - ChessCore handles rules, legal moves, and game state.
 /// - ChessUI renders the board and consumes FEN updates.
-/// - StockfishMoveProvider isolates StockfishEmbedded and UCI search lifecycle.
+/// - DemoEngineProvider implementations isolate embedded engine UCI lifecycle.
 final class GameViewModel: ObservableObject {
     /// Lightweight model for the end-of-game alert content.
     struct GameResult: Identifiable {
@@ -46,18 +46,18 @@ final class GameViewModel: ObservableObject {
     /// User-visible engine activity shown on the game screen.
     enum EngineActivityState: Equatable {
         case idle
-        case thinking(depth: Int)
-        case timeoutWaiting(depth: Int)
+        case thinking(engine: DemoEngineKind, depth: Int)
+        case timeoutWaiting(engine: DemoEngineKind, depth: Int)
         case notice(String)
 
         var message: String? {
             switch self {
             case .idle:
                 return nil
-            case .thinking(let depth):
-                return "Stockfish thinking at depth \(depth)..."
-            case .timeoutWaiting(let depth):
-                return "Depth \(depth) timed out; waiting for best move..."
+            case .thinking(let engine, let depth):
+                return "\(engine.displayName) thinking at depth \(depth)..."
+            case .timeoutWaiting(let engine, let depth):
+                return "\(engine.displayName) depth \(depth) timed out; waiting for best move..."
             case .notice(let message):
                 return message
             }
@@ -105,8 +105,10 @@ final class GameViewModel: ObservableObject {
     @Published var showsEvaluationBar = true
     /// Number of app-supplied engine suggestion arrows shown on the board.
     @Published private(set) var suggestionArrowCount: Int
-    /// Stockfish search depth used for future engine and suggestion searches.
+    /// Search depth used for future engine and suggestion searches.
     @Published private(set) var engineDepth: Int
+    /// Embedded engine used for future live replies and suggestion analysis.
+    @Published private(set) var selectedEngineKind: DemoEngineKind
     /// ChessCore status mirrored for SwiftUI rendering.
     @Published private(set) var gameStatus: GameStatus
     /// Side to move mirrored for SwiftUI rendering.
@@ -153,7 +155,11 @@ final class GameViewModel: ObservableObject {
     private let scenarioReplayDelaySeconds: TimeInterval
     /// Stockfish-backed move and analysis provider for normal gameplay.
     private lazy var stockfishProvider = StockfishMoveProvider { [weak self] event in
-        self?.receiveStockfishEvent(event)
+        self?.receiveEngineProviderEvent(event)
+    }
+    /// Arasan-backed move and analysis provider for normal gameplay.
+    private lazy var arasanProvider = ArasanMoveProvider { [weak self] event in
+        self?.receiveEngineProviderEvent(event)
     }
     /// When the current opponent search began, used to make the delay a minimum rather than additive.
     private var opponentSearchStartedAt: Date?
@@ -176,8 +182,10 @@ final class GameViewModel: ObservableObject {
         } else {
             self.moveProvider = nil
         }
-        // Store the Stockfish depth so future searches use the current setting.
+        // Store the engine depth so future searches use the current setting.
         self.engineDepth = Self.initialEngineDepth
+        // Default to Stockfish because it was the original demo engine.
+        self.selectedEngineKind = Self.initialEngineKind
         // UI tests can lower the minimum visible thinking time while normal demo launches keep it.
         self.minimumEngineThinkingSeconds = Self.initialMinimumEngineThinkingSeconds
         self.scenarioReplayDelaySeconds = Self.initialScenarioReplayDelaySeconds
@@ -245,10 +253,10 @@ final class GameViewModel: ObservableObject {
         return max(delay, 0)
     }
 
-    /// Lowest Stockfish search depth exposed by the game screen.
+    /// Lowest engine search depth exposed by the game screen.
     static let minimumEngineDepth = 1
 
-    /// Highest Stockfish search depth exposed by the game screen.
+    /// Highest engine search depth exposed by the game screen.
     static let maximumEngineDepth = 30
 
     /// UI tests can lower the engine depth to keep smoke flows fast without
@@ -264,8 +272,20 @@ final class GameViewModel: ObservableObject {
         return clampedEngineDepth(depth)
     }
 
+    /// UI tests and manual launches can select a non-default engine explicitly.
+    private static var initialEngineKind: DemoEngineKind {
+        let environment = ProcessInfo.processInfo.environment
+        guard let value = environment["SWIFT_CHESS_DEMO_ENGINE"]?.lowercased(),
+              let engineKind = DemoEngineKind(rawValue: value)
+        else {
+            return .stockfish
+        }
+
+        return engineKind
+    }
+
     /// UI tests can provide a deterministic starting evaluation without
-    /// depending on live Stockfish search output.
+    /// depending on live engine search output.
     private static var initialEvaluation: ChessEvaluation {
         let environment = ProcessInfo.processInfo.environment
         guard let value = environment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION"] else {
@@ -330,6 +350,28 @@ final class GameViewModel: ObservableObject {
         min(maximumEngineDepth, max(minimumEngineDepth, depth))
     }
 
+    /// Live provider for the currently selected embedded engine.
+    private var selectedEngineProvider: any DemoEngineProvider {
+        switch selectedEngineKind {
+        case .stockfish:
+            return stockfishProvider
+        case .arasan:
+            return arasanProvider
+        }
+    }
+
+    /// Engine selection is only meaningful for live games, not deterministic scenarios.
+    var showsEngineSelection: Bool {
+        moveProvider == nil
+    }
+
+    /// Engine switching is safe only when no provider output can still mutate UI state.
+    var canSwitchEngine: Bool {
+        showsEngineSelection
+            && !selectedEngineProvider.isBusy
+            && pendingEngineMoveWorkItem == nil
+    }
+
     /// Test-only controls are opt-in through the UI test launch environment.
     var showsUITestMoveControls: Bool {
         moveProvider?.showsUITestMoveControls == true
@@ -369,7 +411,23 @@ final class GameViewModel: ObservableObject {
         self.showsEvaluationBar = showsEvaluationBar
     }
 
-    /// Updates the Stockfish search depth used for future searches.
+    /// Selects the embedded engine used for future live replies and suggestions.
+    func setSelectedEngineKind(_ engineKind: DemoEngineKind) {
+        guard engineKind != selectedEngineKind else { return }
+        guard canSwitchEngine else { return }
+
+        selectedEngineProvider.stop()
+        selectedEngineKind = engineKind
+        suggestedMovesByRank.removeAll()
+        suggestedMovesPositionFEN = nil
+        boardModel.clearArrows()
+        evaluation = .unavailable
+        finishOpponentSearch()
+        setEngineActivity(.idle)
+        scheduleSuggestionSearchIfNeeded()
+    }
+
+    /// Updates the engine search depth used for future searches.
     func setEngineDepth(_ depth: Int) {
         let clampedDepth = Self.clampedEngineDepth(depth)
         guard clampedDepth != engineDepth else { return }
@@ -378,7 +436,7 @@ final class GameViewModel: ObservableObject {
 
         if boardModel.game.position.state.turn == playerColor.opposite {
             if moveProvider == nil,
-               stockfishProvider.activePurpose == nil,
+               selectedEngineProvider.activePurpose == nil,
                pendingEngineMoveWorkItem == nil
             {
                 scheduleEngineMove()
@@ -392,22 +450,22 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        guard stockfishProvider.activePurpose != .opponentMove else { return }
+        guard selectedEngineProvider.activePurpose != .opponentMove else { return }
 
         if let moveProvider {
             applyMoveProviderSuggestionArrows(moveProvider)
             return
         }
 
-        let request = stockfishSearchRequest(purpose: .suggestions)
+        let request = engineSearchRequest(purpose: .suggestions)
 
-        if stockfishProvider.activePurpose == .suggestions {
+        if selectedEngineProvider.activePurpose == .suggestions {
             cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
         } else {
             suggestedMovesByRank.removeAll()
             suggestedMovesPositionFEN = nil
             boardModel.clearArrows()
-            stockfishProvider.startOrQueueSearch(request)
+            selectedEngineProvider.startOrQueueSearch(request)
         }
     }
 
@@ -418,7 +476,7 @@ final class GameViewModel: ObservableObject {
 
         suggestionArrowCount = clampedCount
         if clampedCount == 0 {
-            if stockfishProvider.activePurpose == .suggestions {
+            if selectedEngineProvider.activePurpose == .suggestions {
                 cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
             } else {
                 boardModel.clearArrows()
@@ -465,7 +523,7 @@ final class GameViewModel: ObservableObject {
         guard applyMove(move: move) else { return }
         // Stop here if the move ended the game.
         if checkForGameEnd() { return }
-        // Otherwise, ask Stockfish for a reply and hold only fast results until
+        // Otherwise, ask the selected engine for a reply and hold only fast results until
         // the minimum visible thinking time has elapsed.
         scheduleEngineMove()
     }
@@ -606,7 +664,7 @@ final class GameViewModel: ObservableObject {
         requestEngineMove()
     }
 
-    /// Requests a Stockfish reply for the current position.
+    /// Requests a selected-engine reply for the current position.
     private func requestEngineMove() {
         // Only search when it is the engine's turn.
         guard boardModel.game.position.state.turn == playerColor.opposite else { return }
@@ -619,7 +677,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        stockfishProvider.startOrQueueSearch(stockfishSearchRequest(purpose: .opponentMove))
+        selectedEngineProvider.startOrQueueSearch(engineSearchRequest(purpose: .opponentMove))
     }
 
     /// Sets engine activity and clears transient notices after a short display interval.
@@ -650,7 +708,7 @@ final class GameViewModel: ObservableObject {
         opponentSearchStartedAt = Date()
         opponentSearchTimedOut = false
         latestOpponentPrincipalVariationMove = nil
-        setEngineActivity(.thinking(depth: engineDepth))
+        setEngineActivity(.thinking(engine: selectedEngineKind, depth: engineDepth))
     }
 
     /// Applies a deterministic provider move for scenario-backed UI tests.
@@ -667,8 +725,8 @@ final class GameViewModel: ObservableObject {
         scheduleOpponentMoveApplication(move: move)
     }
 
-    /// Handles typed output from the Stockfish provider.
-    private func receiveStockfishEvent(_ event: StockfishMoveProviderEvent) {
+    /// Handles typed output from the selected engine provider.
+    private func receiveEngineProviderEvent(_ event: EngineProviderEvent) {
         switch event {
         case .output(let output, let request):
             switch request.purpose {
@@ -679,17 +737,20 @@ final class GameViewModel: ObservableObject {
             }
 
         case .timeout(let request):
-            handleStockfishTimeout(request)
+            handleEngineTimeout(request)
 
         case .timeoutWithoutBestMove(let request):
-            handleStockfishTimeoutWithoutBestMove(request)
+            handleEngineTimeoutWithoutBestMove(request)
+
+        case .failure(let message, let request):
+            handleEngineFailure(message: message, request: request)
         }
     }
 
     /// Handles parsed UCI output from an opponent-move search.
     private func receiveOpponentEngineOutput(
         _ output: UCIParsedLine,
-        request: StockfishSearchRequest
+        request: EngineSearchRequest
     ) {
         switch output {
         case .info(let info):
@@ -701,9 +762,13 @@ final class GameViewModel: ObservableObject {
         case .bestMove(let bestMove):
             let move = bestMove.move ?? latestOpponentPrincipalVariationMove
             let timeoutNotice = opponentSearchTimedOut
-                ? "Stockfish timed out; played the best move found so far."
+                ? "\(request.engineKind.displayName) timed out; played the best move found so far."
                 : nil
-            scheduleOpponentMoveApplication(move: move, statusNotice: timeoutNotice)
+            scheduleOpponentMoveApplication(
+                move: move,
+                engineKind: request.engineKind,
+                statusNotice: timeoutNotice
+            )
 
         case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
             return
@@ -713,7 +778,7 @@ final class GameViewModel: ObservableObject {
     /// Handles parsed UCI output from a move-suggestion search.
     private func receiveSuggestionEngineOutput(
         _ output: UCIParsedLine,
-        request: StockfishSearchRequest
+        request: EngineSearchRequest
     ) {
         switch output {
         case .info(let info):
@@ -741,12 +806,12 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Handles the engine move after receiving a parsed `bestmove` line.
-    private func receiveStockfishMove(move: Move?, statusNotice: String? = nil) {
-        // A nil move means Stockfish has no legal move.
+    private func receiveEngineMove(move: Move?, engineKind: DemoEngineKind, statusNotice: String? = nil) {
+        // A nil move means the engine has no legal move.
         guard let move else {
             let message = statusNotice ?? (opponentSearchTimedOut
-                ? "Stockfish timed out before returning a move. Try a lower depth."
-                : "Stockfish did not return a move.")
+                ? "\(engineKind.displayName) timed out before returning a move. Try a lower depth."
+                : "\(engineKind.displayName) did not return a move.")
             finishOpponentSearchWithoutMove(message: message)
             return
         }
@@ -754,7 +819,7 @@ final class GameViewModel: ObservableObject {
         guard applyMove(
             move: move,
             failureTitle: "Engine Error",
-            failureMessage: "Stockfish returned an illegal move."
+            failureMessage: "\(engineKind.displayName) returned an illegal move."
         ) else {
             return
         }
@@ -768,19 +833,19 @@ final class GameViewModel: ObservableObject {
         scheduleSuggestionSearchIfNeeded()
     }
 
-    /// Handles provider-reported Stockfish search timeouts.
-    private func handleStockfishTimeout(_ request: StockfishSearchRequest) {
+    /// Handles provider-reported engine search timeouts.
+    private func handleEngineTimeout(_ request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             setEngineActivity(.notice("Suggestion analysis timed out."))
             return
         }
 
         opponentSearchTimedOut = true
-        setEngineActivity(.timeoutWaiting(depth: request.depth))
+        setEngineActivity(.timeoutWaiting(engine: request.engineKind, depth: request.depth))
     }
 
     /// Handles a timeout where `stop` did not produce a `bestmove` quickly.
-    private func handleStockfishTimeoutWithoutBestMove(_ request: StockfishSearchRequest) {
+    private func handleEngineTimeoutWithoutBestMove(_ request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             setEngineActivity(.notice("Suggestion analysis timed out before returning a move."))
             return
@@ -789,13 +854,24 @@ final class GameViewModel: ObservableObject {
         if let move = latestOpponentPrincipalVariationMove {
             scheduleOpponentMoveApplication(
                 move: move,
-                statusNotice: "Stockfish timed out; played the best move found so far."
+                engineKind: request.engineKind,
+                statusNotice: "\(request.engineKind.displayName) timed out; played the best move found so far."
             )
         } else {
             finishOpponentSearchWithoutMove(
-                message: "Stockfish timed out before returning a move. Try a lower depth."
+                message: "\(request.engineKind.displayName) timed out before returning a move. Try a lower depth."
             )
         }
+    }
+
+    /// Handles provider setup failures without mutating the board.
+    private func handleEngineFailure(message: String, request: EngineSearchRequest) {
+        if request.purpose == .suggestions {
+            setEngineActivity(.notice("\(request.engineKind.displayName) analysis failed: \(message)"))
+            return
+        }
+
+        finishOpponentSearchWithoutMove(message: "\(request.engineKind.displayName) failed: \(message)")
     }
 
     /// Caches the latest legal first principal-variation move for timeout fallback.
@@ -811,8 +887,13 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Applies the opponent move after any remaining minimum thinking time.
-    private func scheduleOpponentMoveApplication(move: Move?, statusNotice: String? = nil) {
+    private func scheduleOpponentMoveApplication(
+        move: Move?,
+        engineKind: DemoEngineKind? = nil,
+        statusNotice: String? = nil
+    ) {
         pendingEngineMoveWorkItem?.cancel()
+        let engineKind = engineKind ?? selectedEngineKind
 
         let remainingDelay = Self.remainingMinimumThinkingDelay(
             startedAt: opponentSearchStartedAt,
@@ -821,7 +902,7 @@ final class GameViewModel: ObservableObject {
 
         guard remainingDelay > 0 else {
             finishOpponentSearch()
-            receiveStockfishMove(move: move, statusNotice: statusNotice)
+            receiveEngineMove(move: move, engineKind: engineKind, statusNotice: statusNotice)
             return
         }
 
@@ -829,7 +910,7 @@ final class GameViewModel: ObservableObject {
             guard let self else { return }
             self.pendingEngineMoveWorkItem = nil
             self.finishOpponentSearch()
-            self.receiveStockfishMove(move: move, statusNotice: statusNotice)
+            self.receiveEngineMove(move: move, engineKind: engineKind, statusNotice: statusNotice)
         }
 
         pendingEngineMoveWorkItem = workItem
@@ -866,6 +947,7 @@ final class GameViewModel: ObservableObject {
         scenarioReplayWorkItem = nil
         moveProvider?.cancel()
         stockfishProvider.stop()
+        arasanProvider.stop()
     }
 
     /// Evaluates draw and win conditions using ChessCore state.
@@ -911,12 +993,12 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        if stockfishProvider.activePurpose == .suggestions, stockfishProvider.activeFEN == fen {
+        if selectedEngineProvider.activePurpose == .suggestions, selectedEngineProvider.activeFEN == fen {
             refreshSuggestionArrows()
             return
         }
 
-        guard stockfishProvider.activePurpose != .opponentMove else { return }
+        guard selectedEngineProvider.activePurpose != .opponentMove else { return }
 
         if let moveProvider {
             applyMoveProviderSuggestionArrows(moveProvider)
@@ -925,17 +1007,17 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Starts a Stockfish MultiPV search whose output is rendered as arrows.
+    /// Starts a selected-engine MultiPV search whose output is rendered as arrows.
     private func requestSuggestionArrows() {
         guard suggestionArrowCount > 0 else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
 
-        startStockfishSearch(stockfishSearchRequest(purpose: .suggestions))
+        startEngineSearch(engineSearchRequest(purpose: .suggestions))
     }
 
     /// Cancels only an active suggestion search, preserving opponent searches.
-    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: StockfishSearchRequest?) {
-        stockfishProvider.cancelSuggestionSearch(queueReplacement: queueReplacement)
+    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
+        selectedEngineProvider.cancelSuggestionSearch(queueReplacement: queueReplacement)
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
 
@@ -944,20 +1026,21 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Starts one Stockfish search after clearing stale suggestion state.
-    private func startStockfishSearch(_ request: StockfishSearchRequest) {
+    /// Starts one engine search after clearing stale suggestion state.
+    private func startEngineSearch(_ request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             suggestedMovesByRank.removeAll()
             suggestedMovesPositionFEN = nil
             boardModel.clearArrows()
         }
 
-        stockfishProvider.startOrQueueSearch(request)
+        selectedEngineProvider.startOrQueueSearch(request)
     }
 
     /// Captures the current board position and search settings in one immutable request.
-    private func stockfishSearchRequest(purpose: StockfishSearchPurpose) -> StockfishSearchRequest {
-        StockfishSearchRequest(
+    private func engineSearchRequest(purpose: EngineSearchPurpose) -> EngineSearchRequest {
+        EngineSearchRequest(
+            engineKind: selectedEngineKind,
             purpose: purpose,
             fen: fenSerializer.fen(from: boardModel.game.position),
             sideToMove: boardModel.game.position.state.turn,
@@ -966,7 +1049,7 @@ final class GameViewModel: ObservableObject {
         )
     }
 
-    /// Creates deterministic suggestion arrows from a non-Stockfish provider.
+    /// Creates deterministic suggestion arrows from a non-live-engine provider.
     private func applyMoveProviderSuggestionArrows(_ moveProvider: GameMoveProvider) {
         guard suggestionArrowCount > 0,
               boardModel.game.position.state.turn == playerColor
@@ -1105,7 +1188,7 @@ final class GameViewModel: ObservableObject {
             return "\(winner.displayName) wins"
         }
 
-        return winner == playerColor ? "You win" : "Stockfish wins"
+        return winner == playerColor ? "You win" : "\(selectedEngineKind.displayName) wins"
     }
 
     /// Accessibility-friendly status text used by scenario UI tests.

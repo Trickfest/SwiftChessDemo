@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -10,7 +10,7 @@
 
 import ChessCore
 
-/// Source for deterministic, non-Stockfish moves in the demo.
+/// Source for deterministic, non-live-engine moves in the demo.
 protocol GameMoveProvider: AnyObject {
     /// Human-readable provider name for diagnostics.
     var name: String { get }

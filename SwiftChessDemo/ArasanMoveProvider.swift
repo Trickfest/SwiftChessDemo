@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -8,20 +8,21 @@
 // See the LICENSE file for more information.
 //
 
+import ArasanEmbedded
 import Foundation
 import ChessUCI
 
-/// Owns the embedded Stockfish process and UCI search lifecycle.
+/// Owns the embedded Arasan process and UCI search lifecycle.
 ///
 /// The game view model decides what engine output means for the app. This
 /// provider only serializes searches, sends UCI commands, parses engine lines,
 /// suppresses cancelled suggestion output, and reports typed events.
 @MainActor
-final class StockfishMoveProvider: DemoEngineProvider {
+final class ArasanMoveProvider: DemoEngineProvider {
     typealias EventHandler = @MainActor (EngineProviderEvent) -> Void
 
     private let eventHandler: EventHandler
-    private var engine: SFEngine?
+    private var engine: ArasanEngine?
     private var activeRequest: EngineSearchRequest?
     private var queuedSearchRequest: EngineSearchRequest?
     private var isIgnoringActiveSuggestionOutput = false
@@ -35,7 +36,7 @@ final class StockfishMoveProvider: DemoEngineProvider {
         self.eventHandler = eventHandler
     }
 
-    let engineKind: DemoEngineKind = .stockfish
+    let engineKind: DemoEngineKind = .arasan
 
     var activePurpose: EngineSearchPurpose? {
         activeRequest?.purpose
@@ -98,7 +99,6 @@ final class StockfishMoveProvider: DemoEngineProvider {
 
     private func startSearch(_ request: EngineSearchRequest) {
         guard request.engineKind == engineKind else { return }
-        guard let engine = ensureEngineStarted() else { return }
 
         activeRequest = request
         queuedSearchRequest = nil
@@ -107,6 +107,8 @@ final class StockfishMoveProvider: DemoEngineProvider {
         searchToken = UUID()
         timeoutTask?.cancel()
         timeoutStopTask?.cancel()
+
+        guard let engine = ensureEngineStarted(for: request) else { return }
 
         engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
         engine.sendCommand(UCICommand.isReady.string)
@@ -117,7 +119,7 @@ final class StockfishMoveProvider: DemoEngineProvider {
         startTimeout(token: searchToken)
     }
 
-    private func ensureEngineStarted() -> SFEngine? {
+    private func ensureEngineStarted(for request: EngineSearchRequest) -> ArasanEngine? {
         if let engine {
             return engine
         }
@@ -125,16 +127,23 @@ final class StockfishMoveProvider: DemoEngineProvider {
         let parser = UCIParser()
         let engineInstanceID = UUID()
         self.engineInstanceID = engineInstanceID
-        let engine = SFEngine(lineHandler: { [weak self] line in
+        let engine = ArasanEngine(lineHandler: { [weak self] line in
             let parsedLine = parser.parse(line)
             Task { @MainActor in
                 self?.receiveParsedLine(parsedLine, engineInstanceID: engineInstanceID)
             }
         })
 
+        do {
+            try engine.start()
+        } catch {
+            let queuedRequest = finishCurrentSearch()
+            eventHandler(.failure(message: error.localizedDescription, request: request))
+            startQueuedSearchIfStillIdle(queuedRequest)
+            return nil
+        }
+
         self.engine = engine
-        engine.start()
-        engine.sendCommand(UCICommand.uci.string)
         return engine
     }
 

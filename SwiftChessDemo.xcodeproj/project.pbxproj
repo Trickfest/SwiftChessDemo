@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */; };
+		A5A100000000000000000001 /* ArasanEmbedded in Frameworks */ = {isa = PBXBuildFile; productRef = A5A100000000000000000003 /* ArasanEmbedded */; };
 		C0D10000000000000000000C /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = C0D10000000000000000000D /* ChessUI */; };
 		D4D200000000000000000001 /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000004 /* ChessCore */; };
 		D4D200000000000000000002 /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000005 /* ChessUI */; };
@@ -76,6 +77,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */,
+				A5A100000000000000000001 /* ArasanEmbedded in Frameworks */,
 				D4D200000000000000000001 /* ChessCore in Frameworks */,
 				D4D200000000000000000002 /* ChessUI in Frameworks */,
 				D4D200000000000000000007 /* ChessUCI in Frameworks */,
@@ -178,6 +180,7 @@
 				D4D200000000000000000004 /* ChessCore */,
 				D4D200000000000000000005 /* ChessUI */,
 				D4D200000000000000000006 /* ChessUCI */,
+				A5A100000000000000000003 /* ArasanEmbedded */,
 			);
 			productName = SwiftChessDemo;
 			productReference = BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */;
@@ -264,6 +267,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */,
+				A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BBE95A3E2F09B47C003C9B73 /* Products */;
@@ -358,6 +362,17 @@
 		};
 /* End PBXTargetDependency section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Trickfest/ArasanEmbedded.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCLocalSwiftPackageReference section */
 		D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -366,6 +381,11 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A5A100000000000000000003 /* ArasanEmbedded */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */;
+			productName = ArasanEmbedded;
+		};
 		D4D200000000000000000004 /* ChessCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ChessCore;
