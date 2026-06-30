@@ -161,9 +161,16 @@ final class SwiftChessDemoUITests: XCTestCase {
 
     func testGameEnginePickerSelectsLiveEngineAndUpdatesBoardState() throws {
         let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let evaluationBar = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "evaluation bar"
+        )
+        try waitForEvaluationValueIsAvailable(evaluationBar, named: "initial engine evaluation")
 
         let picker = try scrollUntilHittable(
             app.descendants(matching: .any)["Game.enginePicker"].firstMatch,
@@ -178,6 +185,13 @@ final class SwiftChessDemoUITests: XCTestCase {
 
         try waitForElementValue(picker, expectedValue: "Arasan", named: "game engine picker")
         try waitForGameBoardState(containing: "Engine: Arasan", in: app, named: "selected engine")
+        try waitForEvaluationValueIsAvailable(evaluationBar, named: "Arasan engine evaluation")
+
+        try select("Stockfish", from: picker, in: app)
+
+        try waitForElementValue(picker, expectedValue: "Stockfish", named: "game engine picker")
+        try waitForGameBoardState(containing: "Engine: Stockfish", in: app, named: "restored engine")
+        try waitForEvaluationValueIsAvailable(evaluationBar, named: "restored Stockfish evaluation")
     }
 
     func testGameCoordinateLabelsToggleUpdatesBoardState() throws {
@@ -328,7 +342,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
             named: "evaluation bar"
         )
-        XCTAssertEqual(evaluationBar.value as? String, "White advantage 0.9 pawns")
+        assertEvaluationValueIsAvailable(evaluationBar)
 
         let board = try requireElement(
             app.descendants(matching: .any)["Game.boardState"].firstMatch,
@@ -795,6 +809,50 @@ final class SwiftChessDemoUITests: XCTestCase {
         } else {
             XCTAssertEqual(evaluationBar.frame.width, board.frame.width, accuracy: 2, file: file, line: line)
         }
+    }
+
+    private func assertEvaluationValueIsAvailable(
+        _ evaluationBar: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let value = evaluationBar.value as? String ?? ""
+        let isCentipawnScore = value.hasPrefix("White advantage ") || value.hasPrefix("Black advantage ")
+        let isMateScore = value.hasPrefix("White mate in ") || value.hasPrefix("Black mate in ")
+        let isEqualScore = value == "Equal evaluation"
+
+        XCTAssertTrue(
+            isCentipawnScore || isMateScore || isEqualScore,
+            "Unexpected evaluation value: \(value)",
+            file: file,
+            line: line
+        )
+    }
+
+    private func waitForEvaluationValueIsAvailable(
+        _ evaluationBar: XCUIElement,
+        named name: String,
+        timeout: TimeInterval = 8,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        var lastValue = evaluationBar.value as? String ?? ""
+
+        repeat {
+            lastValue = evaluationBar.value as? String ?? ""
+            let isCentipawnScore = lastValue.hasPrefix("White advantage ") || lastValue.hasPrefix("Black advantage ")
+            let isMateScore = lastValue.hasPrefix("White mate in ") || lastValue.hasPrefix("Black mate in ")
+            let isEqualScore = lastValue == "Equal evaluation"
+            if isCentipawnScore || isMateScore || isEqualScore {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+
+        XCTFail("Expected \(name) to become available. Last value: \(lastValue)", file: file, line: line)
+        throw UITestFailure(description: "\(name) did not become available")
     }
 
     private func moveSmokeTestApplication(id: String) -> XCUIApplication {

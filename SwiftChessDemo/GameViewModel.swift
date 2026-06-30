@@ -20,6 +20,8 @@ import ChessUCI
 /// - ChessUI renders the board and consumes FEN updates.
 /// - DemoEngineProvider implementations isolate embedded engine UCI lifecycle.
 final class GameViewModel: ObservableObject {
+    typealias EngineProviderFactory = @MainActor (@escaping DemoEngineEventHandler) -> any DemoEngineProvider
+
     /// Lightweight model for the end-of-game alert content.
     struct GameResult: Identifiable {
         let id = UUID()
@@ -153,14 +155,20 @@ final class GameViewModel: ObservableObject {
     private let minimumEngineThinkingSeconds: TimeInterval
     /// Delay between moves during automatic scenario replay.
     private let scenarioReplayDelaySeconds: TimeInterval
+    /// Factory for the Stockfish-backed move and analysis provider.
+    private let stockfishProviderFactory: EngineProviderFactory
+    /// Factory for the Arasan-backed move and analysis provider.
+    private let arasanProviderFactory: EngineProviderFactory
     /// Stockfish-backed move and analysis provider for normal gameplay.
-    private lazy var stockfishProvider = StockfishMoveProvider { [weak self] event in
-        self?.receiveEngineProviderEvent(event)
-    }
+    private lazy var stockfishProvider: any DemoEngineProvider =
+        stockfishProviderFactory { [weak self] event in
+            self?.receiveEngineProviderEvent(event)
+        }
     /// Arasan-backed move and analysis provider for normal gameplay.
-    private lazy var arasanProvider = ArasanMoveProvider { [weak self] event in
-        self?.receiveEngineProviderEvent(event)
-    }
+    private lazy var arasanProvider: any DemoEngineProvider =
+        arasanProviderFactory { [weak self] event in
+            self?.receiveEngineProviderEvent(event)
+        }
     /// When the current opponent search began, used to make the delay a minimum rather than additive.
     private var opponentSearchStartedAt: Date?
     /// Whether the current opponent search has crossed the provider timeout.
@@ -172,7 +180,11 @@ final class GameViewModel: ObservableObject {
         playerColor: PieceColor,
         pieceSet: ChessPieceSet,
         boardTheme: ChessBoardTheme,
-        scenario: GameScenario? = nil
+        scenario: GameScenario? = nil,
+        minimumEngineThinkingSeconds: TimeInterval? = nil,
+        scenarioReplayDelaySeconds: TimeInterval? = nil,
+        stockfishProviderFactory: @escaping EngineProviderFactory = { StockfishMoveProvider(eventHandler: $0) },
+        arasanProviderFactory: @escaping EngineProviderFactory = { ArasanMoveProvider(eventHandler: $0) }
     ) {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
@@ -187,8 +199,16 @@ final class GameViewModel: ObservableObject {
         // Default to Stockfish because it was the original demo engine.
         self.selectedEngineKind = Self.initialEngineKind
         // UI tests can lower the minimum visible thinking time while normal demo launches keep it.
-        self.minimumEngineThinkingSeconds = Self.initialMinimumEngineThinkingSeconds
-        self.scenarioReplayDelaySeconds = Self.initialScenarioReplayDelaySeconds
+        self.minimumEngineThinkingSeconds = max(
+            minimumEngineThinkingSeconds ?? Self.initialMinimumEngineThinkingSeconds,
+            0
+        )
+        self.scenarioReplayDelaySeconds = max(
+            scenarioReplayDelaySeconds ?? Self.initialScenarioReplayDelaySeconds,
+            0
+        )
+        self.stockfishProviderFactory = stockfishProviderFactory
+        self.arasanProviderFactory = arasanProviderFactory
         // Keep the selected ChessUI artwork available for menus and board updates.
         self.pieceSet = pieceSet
         // Keep the selected ChessUI board theme available for menus and board updates.
@@ -365,10 +385,10 @@ final class GameViewModel: ObservableObject {
         moveProvider == nil
     }
 
-    /// Engine switching is safe only when no provider output can still mutate UI state.
+    /// Engine switching is safe during display-only analysis, but not while an opponent move is pending.
     var canSwitchEngine: Bool {
         showsEngineSelection
-            && !selectedEngineProvider.isBusy
+            && selectedEngineProvider.activePurpose != .opponentMove
             && pendingEngineMoveWorkItem == nil
     }
 
@@ -408,7 +428,14 @@ final class GameViewModel: ObservableObject {
 
     /// Updates whether the visible evaluation bar reference component is shown.
     func setEvaluationBarVisible(_ showsEvaluationBar: Bool) {
+        guard showsEvaluationBar != self.showsEvaluationBar else { return }
+
         self.showsEvaluationBar = showsEvaluationBar
+        if showsEvaluationBar {
+            refreshCurrentAnalysis(force: false)
+        } else if selectedEngineProvider.activePurpose == .evaluation {
+            cancelAnalysisSearch(clearSuggestions: false, queueReplacement: nil)
+        }
     }
 
     /// Selects the embedded engine used for future live replies and suggestions.
@@ -421,10 +448,9 @@ final class GameViewModel: ObservableObject {
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         boardModel.clearArrows()
-        evaluation = .unavailable
         finishOpponentSearch()
         setEngineActivity(.idle)
-        scheduleSuggestionSearchIfNeeded()
+        refreshCurrentAnalysis(force: true)
     }
 
     /// Updates the engine search depth used for future searches.
@@ -444,29 +470,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        guard suggestionArrowCount > 0,
-              boardModel.game.position.state.turn == playerColor
-        else {
-            return
-        }
-
-        guard selectedEngineProvider.activePurpose != .opponentMove else { return }
-
-        if let moveProvider {
-            applyMoveProviderSuggestionArrows(moveProvider)
-            return
-        }
-
-        let request = engineSearchRequest(purpose: .suggestions)
-
-        if selectedEngineProvider.activePurpose == .suggestions {
-            cancelSuggestionSearch(clearSuggestions: true, queueReplacement: request)
-        } else {
-            suggestedMovesByRank.removeAll()
-            suggestedMovesPositionFEN = nil
-            boardModel.clearArrows()
-            selectedEngineProvider.startOrQueueSearch(request)
-        }
+        refreshCurrentAnalysis(force: true)
     }
 
     /// Updates how many engine-supplied move suggestion arrows the board shows.
@@ -476,14 +480,18 @@ final class GameViewModel: ObservableObject {
 
         suggestionArrowCount = clampedCount
         if clampedCount == 0 {
-            if selectedEngineProvider.activePurpose == .suggestions {
-                cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
+            if selectedEngineProvider.activePurpose?.isAnalysis == true {
+                cancelAnalysisSearch(
+                    clearSuggestions: true,
+                    queueReplacement: showsEvaluationBar ? engineSearchRequest(purpose: .evaluation) : nil
+                )
             } else {
                 boardModel.clearArrows()
+                refreshCurrentAnalysis(force: true)
             }
         } else {
             refreshSuggestionArrows()
-            scheduleSuggestionSearchIfNeeded()
+            refreshCurrentAnalysis(force: true)
         }
     }
 
@@ -507,7 +515,7 @@ final class GameViewModel: ObservableObject {
         } else if playerColor == .black {
             scheduleEngineMove()
         } else {
-            scheduleSuggestionSearchIfNeeded()
+            refreshCurrentAnalysis(force: false)
         }
     }
 
@@ -518,7 +526,7 @@ final class GameViewModel: ObservableObject {
         guard isLegal else { return }
         guard boardModel.game.position.state.turn == playerColor else { return }
         // A real user move invalidates analysis arrows for the previous position.
-        cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
+        cancelAnalysisSearch(clearSuggestions: true, queueReplacement: nil)
         // Apply the move in ChessCore and refresh the board UI.
         guard applyMove(move: move) else { return }
         // Stop here if the move ended the game.
@@ -729,21 +737,49 @@ final class GameViewModel: ObservableObject {
     private func receiveEngineProviderEvent(_ event: EngineProviderEvent) {
         switch event {
         case .output(let output, let request):
+            guard shouldAcceptEngineEvent(for: request) else { return }
+
             switch request.purpose {
             case .opponentMove:
                 receiveOpponentEngineOutput(output, request: request)
             case .suggestions:
                 receiveSuggestionEngineOutput(output, request: request)
+            case .evaluation:
+                receiveEvaluationEngineOutput(output, request: request)
             }
 
         case .timeout(let request):
+            guard shouldAcceptEngineEvent(for: request) else { return }
             handleEngineTimeout(request)
 
         case .timeoutWithoutBestMove(let request):
+            guard shouldAcceptEngineEvent(for: request) else { return }
             handleEngineTimeoutWithoutBestMove(request)
 
         case .failure(let message, let request):
+            guard shouldAcceptEngineEvent(for: request) else { return }
             handleEngineFailure(message: message, request: request)
+        }
+    }
+
+    /// Ignores stale output from an engine, depth, or position that is no longer the active analysis target.
+    private func shouldAcceptEngineEvent(for request: EngineSearchRequest) -> Bool {
+        guard request.engineKind == selectedEngineKind else { return false }
+
+        switch request.purpose {
+        case .opponentMove:
+            return true
+
+        case .suggestions:
+            return suggestionArrowCount > 0
+                && request.depth == engineDepth
+                && request.fen == fenSerializer.fen(from: boardModel.game.position)
+
+        case .evaluation:
+            return suggestionArrowCount == 0
+                && showsEvaluationBar
+                && request.depth == engineDepth
+                && request.fen == fenSerializer.fen(from: boardModel.game.position)
         }
     }
 
@@ -769,6 +805,25 @@ final class GameViewModel: ObservableObject {
                 engineKind: request.engineKind,
                 statusNotice: timeoutNotice
             )
+
+        case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
+            return
+        }
+    }
+
+    /// Handles parsed UCI output from an evaluation-only search.
+    private func receiveEvaluationEngineOutput(
+        _ output: UCIParsedLine,
+        request: EngineSearchRequest
+    ) {
+        switch output {
+        case .info(let info):
+            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
+                evaluation = chessEvaluation(from: score)
+            }
+
+        case .bestMove:
+            return
 
         case .id, .option, .uciOK, .readyOK, .copyProtection, .registration, .unknown:
             return
@@ -830,13 +885,18 @@ final class GameViewModel: ObservableObject {
         }
 
         setEngineActivity(statusNotice.map(EngineActivityState.notice) ?? .idle)
-        scheduleSuggestionSearchIfNeeded()
+        refreshCurrentAnalysis(force: false)
     }
 
     /// Handles provider-reported engine search timeouts.
     private func handleEngineTimeout(_ request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             setEngineActivity(.notice("Suggestion analysis timed out."))
+            return
+        }
+
+        if request.purpose == .evaluation {
+            setEngineActivity(.notice("Evaluation analysis timed out."))
             return
         }
 
@@ -848,6 +908,11 @@ final class GameViewModel: ObservableObject {
     private func handleEngineTimeoutWithoutBestMove(_ request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             setEngineActivity(.notice("Suggestion analysis timed out before returning a move."))
+            return
+        }
+
+        if request.purpose == .evaluation {
+            setEngineActivity(.notice("Evaluation analysis timed out before returning a score."))
             return
         }
 
@@ -868,6 +933,11 @@ final class GameViewModel: ObservableObject {
     private func handleEngineFailure(message: String, request: EngineSearchRequest) {
         if request.purpose == .suggestions {
             setEngineActivity(.notice("\(request.engineKind.displayName) analysis failed: \(message)"))
+            return
+        }
+
+        if request.purpose == .evaluation {
+            setEngineActivity(.notice("\(request.engineKind.displayName) evaluation failed: \(message)"))
             return
         }
 
@@ -975,54 +1045,84 @@ final class GameViewModel: ObservableObject {
         activeAlert = .result(GameResult(title: title, message: message))
     }
 
-    /// Starts or refreshes a move-suggestion search when the player is on move.
-    private func scheduleSuggestionSearchIfNeeded() {
-        guard suggestionArrowCount > 0 else {
-            cancelSuggestionSearch(clearSuggestions: true, queueReplacement: nil)
-            return
-        }
-
+    /// Starts or refreshes selected-engine analysis for the current player-turn position.
+    private func refreshCurrentAnalysis(force: Bool) {
         guard boardModel.game.position.state.turn == playerColor else {
             boardModel.clearArrows()
             return
         }
 
-        let fen = fenSerializer.fen(from: boardModel.game.position)
-        if suggestedMovesPositionFEN == fen {
-            refreshSuggestionArrows()
-            return
-        }
-
-        if selectedEngineProvider.activePurpose == .suggestions, selectedEngineProvider.activeFEN == fen {
-            refreshSuggestionArrows()
-            return
-        }
-
         guard selectedEngineProvider.activePurpose != .opponentMove else { return }
+
+        if suggestionArrowCount > 0 {
+            refreshSuggestionAnalysis(force: force)
+            return
+        }
+
+        boardModel.clearArrows()
+
+        guard showsEvaluationBar, moveProvider == nil else {
+            if selectedEngineProvider.activePurpose == .evaluation {
+                cancelAnalysisSearch(clearSuggestions: false, queueReplacement: nil)
+            }
+            return
+        }
+
+        let request = engineSearchRequest(purpose: .evaluation)
+        if force || selectedEngineProvider.activePurpose == .evaluation {
+            startOrReplaceAnalysisSearch(request, clearSuggestions: false)
+        } else if selectedEngineProvider.activePurpose == nil {
+            selectedEngineProvider.startOrQueueSearch(request)
+        }
+    }
+
+    /// Starts or refreshes a move-suggestion search when the player is on move.
+    private func refreshSuggestionAnalysis(force: Bool) {
+        guard suggestionArrowCount > 0 else { return }
+
+        let fen = fenSerializer.fen(from: boardModel.game.position)
+        if !force, suggestedMovesPositionFEN == fen {
+            refreshSuggestionArrows()
+            return
+        }
+
+        if !force,
+           selectedEngineProvider.activePurpose == .suggestions,
+           selectedEngineProvider.activeFEN == fen
+        {
+            refreshSuggestionArrows()
+            return
+        }
 
         if let moveProvider {
             applyMoveProviderSuggestionArrows(moveProvider)
         } else {
-            requestSuggestionArrows()
+            startOrReplaceAnalysisSearch(
+                engineSearchRequest(purpose: .suggestions),
+                clearSuggestions: true
+            )
         }
     }
 
-    /// Starts a selected-engine MultiPV search whose output is rendered as arrows.
-    private func requestSuggestionArrows() {
-        guard suggestionArrowCount > 0 else { return }
-        guard boardModel.game.position.state.turn == playerColor else { return }
-
-        startEngineSearch(engineSearchRequest(purpose: .suggestions))
-    }
-
-    /// Cancels only an active suggestion search, preserving opponent searches.
-    private func cancelSuggestionSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
-        selectedEngineProvider.cancelSuggestionSearch(queueReplacement: queueReplacement)
+    /// Cancels or replaces a display-only analysis search, preserving opponent searches.
+    private func cancelAnalysisSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
+        selectedEngineProvider.cancelAnalysisSearch(queueReplacement: queueReplacement)
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
 
         if clearSuggestions {
             boardModel.clearArrows()
+        }
+    }
+
+    /// Replaces any running analysis search with a new request.
+    private func startOrReplaceAnalysisSearch(_ request: EngineSearchRequest, clearSuggestions: Bool) {
+        guard selectedEngineProvider.activePurpose != .opponentMove else { return }
+
+        if selectedEngineProvider.activePurpose?.isAnalysis == true {
+            cancelAnalysisSearch(clearSuggestions: clearSuggestions, queueReplacement: request)
+        } else {
+            startEngineSearch(request)
         }
     }
 

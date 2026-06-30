@@ -17,6 +17,18 @@ import XCTest
 @MainActor
 final class ArasanMoveProviderIntegrationTests: XCTestCase {
     func testArasanProviderReportsLargeMaterialEvaluation() async throws {
+        try await assertArasanProviderReportsLargeMaterialEvaluation(purpose: .suggestions)
+    }
+
+    func testArasanProviderReportsLargeMaterialEvaluationForEvaluationOnlySearch() async throws {
+        try await assertArasanProviderReportsLargeMaterialEvaluation(purpose: .evaluation)
+    }
+
+    private func assertArasanProviderReportsLargeMaterialEvaluation(
+        purpose: EngineSearchPurpose,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
         let expectedScore = expectation(description: "Arasan reports a queen-sized score")
         var didFulfillExpectedScore = false
         var observedScores: [Int] = []
@@ -42,7 +54,7 @@ final class ArasanMoveProviderIntegrationTests: XCTestCase {
         provider.startOrQueueSearch(
             EngineSearchRequest(
                 engineKind: .arasan,
-                purpose: .suggestions,
+                purpose: purpose,
                 fen: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                 sideToMove: .white,
                 depth: 1,
@@ -53,7 +65,9 @@ final class ArasanMoveProviderIntegrationTests: XCTestCase {
         await fulfillment(of: [expectedScore], timeout: 10)
         XCTAssertTrue(
             observedScores.contains { $0 >= 800 },
-            "Expected a queen-sized Arasan evaluation, got \(observedScores)"
+            "Expected a queen-sized Arasan evaluation, got \(observedScores)",
+            file: file,
+            line: line
         )
     }
 }
@@ -377,11 +391,8 @@ final class GameViewModelEngineActivityTests: XCTestCase {
     }
 
     func testLiveGameCanSwitchSelectedEngineWhenIdle() {
-        let viewModel = GameViewModel(
-            playerColor: .white,
-            pieceSet: .artDecoMonochrome,
-            boardTheme: .classicGreen
-        )
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
 
         XCTAssertTrue(viewModel.showsEngineSelection)
         XCTAssertTrue(viewModel.canSwitchEngine)
@@ -391,10 +402,12 @@ final class GameViewModelEngineActivityTests: XCTestCase {
 
         XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.arasan)
         XCTAssertEqual(viewModel.evaluation, ChessEvaluation.unavailable)
+        XCTAssertEqual(harness.arasan.requests.last?.purpose, .evaluation)
 
         viewModel.setSelectedEngineKind(DemoEngineKind.stockfish)
 
         XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
+        XCTAssertEqual(harness.stockfish.requests.last?.purpose, .evaluation)
     }
 
     func testScenarioGameDoesNotExposeLiveEngineSelection() throws {
@@ -413,6 +426,503 @@ final class GameViewModelEngineActivityTests: XCTestCase {
         viewModel.setSelectedEngineKind(DemoEngineKind.arasan)
 
         XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
+    }
+}
+
+@MainActor
+final class GameViewModelAnalysisRefreshTests: XCTestCase {
+    func testStartRequestsEvaluationWhenSuggestionsAreOff() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(harness.stockfish.requests.map(\.purpose), [.evaluation])
+        XCTAssertEqual(harness.stockfish.requests.last?.depth, 8)
+        XCTAssertEqual(harness.stockfish.requests.last?.multiPVCount, 1)
+        XCTAssertTrue(viewModel.boardModel.arrows.isEmpty)
+    }
+
+    func testEngineSwitchWithSuggestionsOffRequestsEvaluationFromNewEngine() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.startIfNeeded()
+        harness.stockfish.emitInfo(score: .centipawns(900))
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(900))
+
+        viewModel.setSelectedEngineKind(.arasan)
+
+        XCTAssertEqual(viewModel.selectedEngineKind, .arasan)
+        XCTAssertEqual(viewModel.evaluation, .centipawns(900))
+        XCTAssertEqual(harness.stockfish.stopCount, 1)
+        XCTAssertEqual(harness.arasan.requests.last?.purpose, .evaluation)
+        XCTAssertEqual(harness.arasan.requests.last?.depth, 8)
+
+        harness.arasan.emitInfo(score: .centipawns(350))
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(350))
+        XCTAssertTrue(viewModel.boardModel.arrows.isEmpty)
+    }
+
+    func testEngineSwitchWithSuggestionsOnRequestsSuggestionsFromNewEngine() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.setSuggestionArrowCount(3)
+        harness.stockfish.emitInfo(score: .centipawns(120), move: "e2e4", multipv: 1)
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(120))
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), ["Best suggestion e2 to e4"])
+
+        viewModel.setSelectedEngineKind(.arasan)
+
+        XCTAssertEqual(viewModel.selectedEngineKind, .arasan)
+        XCTAssertEqual(viewModel.evaluation, .centipawns(120))
+        XCTAssertEqual(harness.arasan.requests.last?.purpose, .suggestions)
+        XCTAssertEqual(harness.arasan.requests.last?.multiPVCount, 3)
+
+        harness.arasan.emitInfo(score: .centipawns(240), move: "g1f3", multipv: 1)
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(240))
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), ["Best suggestion g1 to f3"])
+    }
+
+    func testDepthChangeWithSuggestionsOffRefreshesEvaluationAtNewDepth() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.startIfNeeded()
+        harness.stockfish.emitBestMove("e2e4")
+
+        viewModel.setEngineDepth(14)
+
+        XCTAssertEqual(harness.stockfish.requests.last?.purpose, .evaluation)
+        XCTAssertEqual(harness.stockfish.requests.last?.depth, 14)
+        XCTAssertEqual(harness.stockfish.cancelAnalysisCount, 0)
+    }
+
+    func testDepthChangeWithSuggestionsOnRefreshesSuggestionsAtNewDepth() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.setSuggestionArrowCount(3)
+        harness.stockfish.emitInfo(score: .centipawns(90), move: "e2e4", multipv: 1)
+
+        viewModel.setEngineDepth(16)
+
+        XCTAssertEqual(harness.stockfish.requests.last?.purpose, .suggestions)
+        XCTAssertEqual(harness.stockfish.requests.last?.depth, 16)
+        XCTAssertEqual(harness.stockfish.requests.last?.multiPVCount, 3)
+        XCTAssertEqual(harness.stockfish.cancelAnalysisCount, 1)
+        XCTAssertTrue(viewModel.boardModel.arrows.isEmpty)
+    }
+
+    func testEngineSwitchUsesCurrentDepthForReplacementAnalysis() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.setEngineDepth(16)
+        harness.stockfish.emitInfo(score: .centipawns(900))
+
+        viewModel.setSelectedEngineKind(.arasan)
+
+        XCTAssertEqual(harness.arasan.requests.last?.purpose, .evaluation)
+        XCTAssertEqual(harness.arasan.requests.last?.depth, 16)
+        XCTAssertEqual(viewModel.evaluation, .centipawns(900))
+    }
+
+    func testStaleEngineOutputAfterSwitchDoesNotOverwriteReplacementAnalysis() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.setSuggestionArrowCount(3)
+
+        let stockfishRequest = harness.stockfish.requireLastRequest()
+        harness.stockfish.emitInfo(
+            score: .centipawns(900),
+            move: "d1h5",
+            multipv: 1,
+            request: stockfishRequest
+        )
+
+        viewModel.setSelectedEngineKind(.arasan)
+        let arasanRequest = harness.arasan.requireLastRequest()
+        harness.arasan.emitInfo(
+            score: .centipawns(420),
+            move: "g1f3",
+            multipv: 1,
+            request: arasanRequest
+        )
+
+        harness.stockfish.emitInfo(
+            score: .centipawns(-600),
+            move: "e2e4",
+            multipv: 1,
+            request: stockfishRequest
+        )
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(420))
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), ["Best suggestion g1 to f3"])
+    }
+
+    func testStaleDepthOutputDoesNotOverwriteReplacementAnalysis() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.setSuggestionArrowCount(3)
+
+        let depthEightRequest = harness.stockfish.requireLastRequest()
+        harness.stockfish.emitInfo(
+            score: .centipawns(100),
+            move: "e2e4",
+            multipv: 1,
+            request: depthEightRequest
+        )
+
+        viewModel.setEngineDepth(16)
+        let depthSixteenRequest = harness.stockfish.requireLastRequest()
+        harness.stockfish.emitInfo(
+            score: .centipawns(300),
+            move: "g1f3",
+            multipv: 1,
+            request: depthSixteenRequest
+        )
+
+        harness.stockfish.emitInfo(
+            score: .centipawns(-500),
+            move: "d2d4",
+            multipv: 1,
+            request: depthEightRequest
+        )
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(300))
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), ["Best suggestion g1 to f3"])
+    }
+
+    func testEvaluationBestMoveDoesNotApplyMove() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+        viewModel.startIfNeeded()
+        let startingFEN = viewModel.positionFEN
+
+        harness.stockfish.emitBestMove("e2e4")
+
+        XCTAssertEqual(viewModel.positionFEN, startingFEN)
+        XCTAssertTrue(viewModel.moveRecords.isEmpty)
+        XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .white)
+    }
+
+    func testSwitchingStockfishToArasanAndBackRestoresAnalysisFromStockfish() {
+        assertSwitchingEnginesThereAndBack(
+            firstEngine: .stockfish,
+            firstMove: "e2e4",
+            firstScore: 410,
+            secondMove: "g1f3",
+            secondScore: -120
+        )
+    }
+
+    func testSwitchingArasanToStockfishAndBackRestoresAnalysisFromArasan() {
+        assertSwitchingEnginesThereAndBack(
+            firstEngine: .arasan,
+            firstMove: "d2d4",
+            firstScore: 275,
+            secondMove: "c2c4",
+            secondScore: 80
+        )
+    }
+
+    func testSwitchingEngineBetweenEachMoveOverTenPlyKeepsAnalysisCurrentStartingWithStockfish() {
+        assertSwitchingEngineBetweenEachMoveOverTenPly(startingEngine: .stockfish)
+    }
+
+    func testSwitchingEngineBetweenEachMoveOverTenPlyKeepsAnalysisCurrentStartingWithArasan() {
+        assertSwitchingEngineBetweenEachMoveOverTenPly(startingEngine: .arasan)
+    }
+
+    private func assertSwitchingEnginesThereAndBack(
+        firstEngine: DemoEngineKind,
+        firstMove: String,
+        firstScore: Int,
+        secondMove: String,
+        secondScore: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+
+        if firstEngine != .stockfish {
+            viewModel.setSelectedEngineKind(firstEngine)
+        }
+        viewModel.setSuggestionArrowCount(3)
+
+        let firstProvider = harness.provider(for: firstEngine)
+        firstProvider.emitInfo(score: .centipawns(firstScore), move: firstMove, multipv: 1)
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(firstScore), file: file, line: line)
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), [label(for: firstMove)], file: file, line: line)
+
+        let secondEngine = firstEngine == .stockfish ? DemoEngineKind.arasan : .stockfish
+        let secondProvider = harness.provider(for: secondEngine)
+        viewModel.setSelectedEngineKind(secondEngine)
+        secondProvider.emitInfo(score: .centipawns(secondScore), move: secondMove, multipv: 1)
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(secondScore), file: file, line: line)
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), [label(for: secondMove)], file: file, line: line)
+
+        viewModel.setSelectedEngineKind(firstEngine)
+        firstProvider.emitInfo(score: .centipawns(firstScore), move: firstMove, multipv: 1)
+
+        XCTAssertEqual(viewModel.evaluation, .centipawns(firstScore), file: file, line: line)
+        XCTAssertEqual(viewModel.boardModel.arrows.map(\.label), [label(for: firstMove)], file: file, line: line)
+        XCTAssertEqual(harness.provider(for: firstEngine).requests.last?.purpose, .suggestions, file: file, line: line)
+    }
+
+    private func assertSwitchingEngineBetweenEachMoveOverTenPly(
+        startingEngine: DemoEngineKind,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        struct ScriptedTurn {
+            let whiteMove: String
+            let blackMove: String
+            let nextWhiteSuggestion: String
+        }
+
+        let turns = [
+            ScriptedTurn(whiteMove: "e2e4", blackMove: "e7e5", nextWhiteSuggestion: "g1f3"),
+            ScriptedTurn(whiteMove: "g1f3", blackMove: "b8c6", nextWhiteSuggestion: "f1c4"),
+            ScriptedTurn(whiteMove: "f1c4", blackMove: "g8f6", nextWhiteSuggestion: "d2d3"),
+            ScriptedTurn(whiteMove: "d2d3", blackMove: "f8c5", nextWhiteSuggestion: "c2c3"),
+            ScriptedTurn(whiteMove: "c2c3", blackMove: "d7d6", nextWhiteSuggestion: "b1d2"),
+        ]
+
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(minimumEngineThinkingSeconds: 0)
+        var activeEngine = startingEngine
+
+        if activeEngine != .stockfish {
+            viewModel.setSelectedEngineKind(activeEngine)
+        }
+        viewModel.setSuggestionArrowCount(3)
+
+        for (index, turn) in turns.enumerated() {
+            let provider = harness.provider(for: activeEngine)
+
+            XCTAssertEqual(viewModel.selectedEngineKind, activeEngine, file: file, line: line)
+            XCTAssertEqual(provider.activePurpose, .suggestions, file: file, line: line)
+            XCTAssertEqual(provider.requests.last?.fen, viewModel.positionFEN, file: file, line: line)
+
+            provider.emitInfo(
+                score: .centipawns(120 + index),
+                move: turn.whiteMove,
+                multipv: 1
+            )
+            XCTAssertEqual(
+                viewModel.boardModel.arrows.map(\.label),
+                [label(for: turn.whiteMove)],
+                file: file,
+                line: line
+            )
+
+            let whiteMove = try! Move(string: turn.whiteMove)
+            XCTAssertTrue(
+                viewModel.boardModel.game.legalMoves.contains(whiteMove),
+                "\(turn.whiteMove) should be legal at turn \(index + 1)",
+                file: file,
+                line: line
+            )
+
+            viewModel.handleUserMove(move: whiteMove, isLegal: true)
+            XCTAssertEqual(provider.requests.last?.purpose, .opponentMove, file: file, line: line)
+            XCTAssertTrue(viewModel.boardModel.arrows.isEmpty, file: file, line: line)
+
+            provider.emitInfo(
+                score: .centipawns(80 - index),
+                move: turn.blackMove
+            )
+            provider.emitBestMove(turn.blackMove)
+
+            XCTAssertEqual(viewModel.moveRecords.count, (index + 1) * 2, file: file, line: line)
+            XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .white, file: file, line: line)
+            XCTAssertEqual(provider.requests.last?.purpose, .suggestions, file: file, line: line)
+            XCTAssertEqual(provider.requests.last?.fen, viewModel.positionFEN, file: file, line: line)
+
+            activeEngine = activeEngine == .stockfish ? .arasan : .stockfish
+            viewModel.setSelectedEngineKind(activeEngine)
+
+            let switchedProvider = harness.provider(for: activeEngine)
+            XCTAssertEqual(viewModel.selectedEngineKind, activeEngine, file: file, line: line)
+            XCTAssertEqual(switchedProvider.requests.last?.purpose, .suggestions, file: file, line: line)
+            XCTAssertEqual(switchedProvider.requests.last?.fen, viewModel.positionFEN, file: file, line: line)
+
+            switchedProvider.emitInfo(
+                score: .centipawns(240 + index),
+                move: turn.nextWhiteSuggestion,
+                multipv: 1
+            )
+            XCTAssertEqual(
+                viewModel.boardModel.arrows.map(\.label),
+                [label(for: turn.nextWhiteSuggestion)],
+                file: file,
+                line: line
+            )
+        }
+
+        XCTAssertEqual(viewModel.moveRecords.count, 10, file: file, line: line)
+        XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .white, file: file, line: line)
+        XCTAssertTrue(viewModel.canSwitchEngine, file: file, line: line)
+    }
+
+    private func label(for moveText: String) -> String {
+        let move = try! Move(string: moveText)
+        return "Best suggestion \(move.from.coordinate) to \(move.to.coordinate)"
+    }
+}
+
+@MainActor
+private final class EngineAnalysisHarness {
+    let stockfish = RecordingEngineProvider(engineKind: .stockfish)
+    let arasan = RecordingEngineProvider(engineKind: .arasan)
+
+    func makeViewModel(minimumEngineThinkingSeconds: TimeInterval = 0) -> GameViewModel {
+        GameViewModel(
+            playerColor: .white,
+            pieceSet: .artDecoMonochrome,
+            boardTheme: .classicGreen,
+            minimumEngineThinkingSeconds: minimumEngineThinkingSeconds,
+            stockfishProviderFactory: { [stockfish] eventHandler in
+                stockfish.eventHandler = eventHandler
+                return stockfish
+            },
+            arasanProviderFactory: { [arasan] eventHandler in
+                arasan.eventHandler = eventHandler
+                return arasan
+            }
+        )
+    }
+
+    func provider(for engineKind: DemoEngineKind) -> RecordingEngineProvider {
+        switch engineKind {
+        case .stockfish:
+            return stockfish
+        case .arasan:
+            return arasan
+        }
+    }
+}
+
+@MainActor
+private final class RecordingEngineProvider: DemoEngineProvider {
+    let engineKind: DemoEngineKind
+    var eventHandler: DemoEngineEventHandler?
+    private(set) var requests: [EngineSearchRequest] = []
+    private(set) var stopCount = 0
+    private(set) var cancelAnalysisCount = 0
+    private var activeRequest: EngineSearchRequest?
+
+    init(engineKind: DemoEngineKind) {
+        self.engineKind = engineKind
+    }
+
+    var activePurpose: EngineSearchPurpose? {
+        activeRequest?.purpose
+    }
+
+    var activeFEN: String? {
+        activeRequest?.fen
+    }
+
+    var isBusy: Bool {
+        activeRequest != nil
+    }
+
+    func startOrQueueSearch(_ request: EngineSearchRequest) {
+        guard request.engineKind == engineKind else { return }
+
+        requests.append(request)
+        activeRequest = request
+    }
+
+    func cancelAnalysisSearch(queueReplacement: EngineSearchRequest?) {
+        guard activeRequest?.purpose.isAnalysis == true else {
+            if let queueReplacement {
+                startOrQueueSearch(queueReplacement)
+            }
+            return
+        }
+
+        cancelAnalysisCount += 1
+        activeRequest = nil
+
+        if let queueReplacement {
+            startOrQueueSearch(queueReplacement)
+        }
+    }
+
+    func stop() {
+        stopCount += 1
+        activeRequest = nil
+    }
+
+    func emitInfo(score: UCIScore, move: String? = nil, multipv: Int? = nil) {
+        guard let activeRequest else {
+            XCTFail("Expected an active request for \(engineKind.displayName)")
+            return
+        }
+
+        emitInfo(score: score, move: move, multipv: multipv, request: activeRequest)
+    }
+
+    func emitInfo(
+        score: UCIScore,
+        move: String? = nil,
+        multipv: Int? = nil,
+        request: EngineSearchRequest
+    ) {
+        guard request.engineKind == engineKind else {
+            XCTFail("Expected \(engineKind.displayName) request, got \(request.engineKind.displayName)")
+            return
+        }
+
+        let principalVariation = move.map { [try! Move(string: $0)] } ?? []
+        let info = UCIInfoLine(
+            rawLine: "info",
+            multipv: multipv,
+            score: score,
+            principalVariation: principalVariation
+        )
+        eventHandler?(.output(.info(info), request: request))
+    }
+
+    func emitBestMove(_ move: String) {
+        guard let activeRequest else {
+            XCTFail("Expected an active request for \(engineKind.displayName)")
+            return
+        }
+
+        self.activeRequest = nil
+        eventHandler?(
+            .output(
+                .bestMove(UCIBestMove(rawLine: "bestmove \(move)", move: try! Move(string: move))),
+                request: activeRequest
+            )
+        )
+    }
+
+    func requireLastRequest(
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> EngineSearchRequest {
+        guard let request = requests.last else {
+            XCTFail("Expected a recorded request for \(engineKind.displayName)", file: file, line: line)
+            return EngineSearchRequest(
+                engineKind: engineKind,
+                purpose: .evaluation,
+                fen: "",
+                sideToMove: .white,
+                depth: 1,
+                multiPVCount: 1
+            )
+        }
+
+        return request
     }
 }
 

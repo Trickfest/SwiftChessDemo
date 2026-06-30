@@ -7,6 +7,10 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+No unreleased changes.
+
+## 1.0.4 - 2026-06-30
+
 ### Added
 
 - Added `ArasanEmbedded` as a second live engine option alongside Stockfish.
@@ -17,13 +21,24 @@ for a release. Tagged releases use dated version headings.
 
 - Generalized live engine request handling so Stockfish and Arasan share the
   same serialized search, timeout, evaluation, and suggestion-arrow flow.
-- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.1 so Arasan
-  evaluation output reflects material imbalances correctly on Apple Silicon.
+- Refreshed live evaluation and suggestion analysis when the selected engine or
+  search depth changes, avoiding stale analysis after switching engines.
+- Preserved the previous evaluation while selected-engine analysis refreshes so
+  the evaluation bar does not snap to neutral while the replacement search is in
+  flight.
+- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.3 so Arasan
+  evaluation output reflects material imbalances correctly on Apple Silicon and
+  engine shutdown/restart is safe during active searches and engine switches.
 
 ### Fixed
 
 - Added Demo integration coverage that verifies Arasan reports a queen-sized
-  material advantage through the app's normal UCI parsing path.
+  material advantage through both suggestion and evaluation-only UCI parsing
+  paths.
+- Added view-model coverage for stale engine and stale depth output after
+  engine/depth changes.
+- Added view-model regression coverage that plays ten ply while switching
+  between Stockfish and Arasan after every engine reply.
 
 ## 1.0.3 - 2026-06-22
 

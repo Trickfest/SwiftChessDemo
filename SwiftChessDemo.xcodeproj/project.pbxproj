@@ -368,7 +368,7 @@
 			repositoryURL = "https://github.com/Trickfest/ArasanEmbedded.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.1;
+				minimumVersion = 1.0.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

@@ -11,6 +11,9 @@
 import ChessCore
 import ChessUCI
 
+/// Shared event callback signature used by embedded engine providers.
+typealias DemoEngineEventHandler = @MainActor (EngineProviderEvent) -> Void
+
 /// Embedded engines exposed by the demo game screen.
 enum DemoEngineKind: String, CaseIterable, Hashable, Identifiable, Sendable {
     case stockfish
@@ -28,11 +31,21 @@ enum DemoEngineKind: String, CaseIterable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// Distinguishes searches that apply a move from analysis searches that only
-/// produce board arrows.
+/// Distinguishes searches that apply a move from analysis searches that update
+/// display-only UI such as evaluation and suggestion arrows.
 enum EngineSearchPurpose: Equatable, Sendable {
     case opponentMove
     case suggestions
+    case evaluation
+
+    var isAnalysis: Bool {
+        switch self {
+        case .suggestions, .evaluation:
+            return true
+        case .opponentMove:
+            return false
+        }
+    }
 }
 
 /// One engine request against one board position.
@@ -62,6 +75,6 @@ protocol DemoEngineProvider: AnyObject {
     var isBusy: Bool { get }
 
     func startOrQueueSearch(_ request: EngineSearchRequest)
-    func cancelSuggestionSearch(queueReplacement: EngineSearchRequest?)
+    func cancelAnalysisSearch(queueReplacement: EngineSearchRequest?)
     func stop()
 }

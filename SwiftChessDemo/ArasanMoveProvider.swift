@@ -16,23 +16,21 @@ import ChessUCI
 ///
 /// The game view model decides what engine output means for the app. This
 /// provider only serializes searches, sends UCI commands, parses engine lines,
-/// suppresses cancelled suggestion output, and reports typed events.
+/// suppresses cancelled analysis output, and reports typed events.
 @MainActor
 final class ArasanMoveProvider: DemoEngineProvider {
-    typealias EventHandler = @MainActor (EngineProviderEvent) -> Void
-
-    private let eventHandler: EventHandler
+    private let eventHandler: DemoEngineEventHandler
     private var engine: ArasanEngine?
     private var activeRequest: EngineSearchRequest?
     private var queuedSearchRequest: EngineSearchRequest?
-    private var isIgnoringActiveSuggestionOutput = false
+    private var isIgnoringActiveAnalysisOutput = false
     private var isWaitingForBestMoveAfterTimeout = false
     private var engineInstanceID = UUID()
     private var searchToken = UUID()
     private var timeoutTask: Task<Void, Never>?
     private var timeoutStopTask: Task<Void, Never>?
 
-    init(eventHandler: @escaping EventHandler) {
+    init(eventHandler: @escaping DemoEngineEventHandler) {
         self.eventHandler = eventHandler
     }
 
@@ -58,15 +56,15 @@ final class ArasanMoveProvider: DemoEngineProvider {
             return
         }
 
-        if activeRequest.purpose == .suggestions {
-            cancelSuggestionSearch(queueReplacement: request)
+        if activeRequest.purpose.isAnalysis {
+            cancelAnalysisSearch(queueReplacement: request)
         }
     }
 
-    func cancelSuggestionSearch(queueReplacement: EngineSearchRequest?) {
-        if activeRequest?.purpose == .suggestions {
+    func cancelAnalysisSearch(queueReplacement: EngineSearchRequest?) {
+        if activeRequest?.purpose.isAnalysis == true {
             queuedSearchRequest = queueReplacement
-            isIgnoringActiveSuggestionOutput = true
+            isIgnoringActiveAnalysisOutput = true
             engine?.sendCommand(UCICommand.stop.string)
         } else if let queueReplacement {
             if activeRequest == nil {
@@ -81,7 +79,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
         searchToken = UUID()
         activeRequest = nil
         queuedSearchRequest = nil
-        isIgnoringActiveSuggestionOutput = false
+        isIgnoringActiveAnalysisOutput = false
         isWaitingForBestMoveAfterTimeout = false
         engineInstanceID = UUID()
         timeoutTask?.cancel()
@@ -89,12 +87,9 @@ final class ArasanMoveProvider: DemoEngineProvider {
         timeoutStopTask?.cancel()
         timeoutStopTask = nil
 
-        if let engine {
-            DispatchQueue.global(qos: .userInitiated).async {
-                engine.stop()
-            }
-        }
-        engine = nil
+        let engine = engine
+        self.engine = nil
+        engine?.stop()
     }
 
     private func startSearch(_ request: EngineSearchRequest) {
@@ -102,7 +97,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
 
         activeRequest = request
         queuedSearchRequest = nil
-        isIgnoringActiveSuggestionOutput = false
+        isIgnoringActiveAnalysisOutput = false
         isWaitingForBestMoveAfterTimeout = false
         searchToken = UUID()
         timeoutTask?.cancel()
@@ -129,7 +124,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
         self.engineInstanceID = engineInstanceID
         let engine = ArasanEngine(lineHandler: { [weak self] line in
             let parsedLine = parser.parse(line)
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 self?.receiveParsedLine(parsedLine, engineInstanceID: engineInstanceID)
             }
         })
@@ -151,7 +146,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
         guard engineInstanceID == self.engineInstanceID else { return }
         guard let request = activeRequest else { return }
 
-        if isIgnoringActiveSuggestionOutput, request.purpose == .suggestions {
+        if isIgnoringActiveAnalysisOutput, request.purpose.isAnalysis {
             if case .bestMove = output {
                 startQueuedSearchIfStillIdle(finishCurrentSearch())
             }
@@ -218,7 +213,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
 
     private func finishCurrentSearch() -> EngineSearchRequest? {
         activeRequest = nil
-        isIgnoringActiveSuggestionOutput = false
+        isIgnoringActiveAnalysisOutput = false
         isWaitingForBestMoveAfterTimeout = false
         searchToken = UUID()
         timeoutTask?.cancel()
@@ -236,11 +231,7 @@ final class ArasanMoveProvider: DemoEngineProvider {
         self.engine = nil
         engineInstanceID = UUID()
 
-        if let engine {
-            DispatchQueue.global(qos: .userInitiated).async {
-                engine.stop()
-            }
-        }
+        engine?.stop()
     }
 
     private func startQueuedSearchIfStillIdle(_ request: EngineSearchRequest?) {
