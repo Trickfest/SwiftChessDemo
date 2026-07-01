@@ -48,18 +48,18 @@ final class GameViewModel: ObservableObject {
     /// User-visible engine activity shown on the game screen.
     enum EngineActivityState: Equatable {
         case idle
-        case thinking(engine: DemoEngineKind, depth: Int)
-        case timeoutWaiting(engine: DemoEngineKind, depth: Int)
+        case thinking(engine: DemoEngineKind)
+        case timeoutWaiting(engine: DemoEngineKind)
         case notice(String)
 
         var message: String? {
             switch self {
             case .idle:
                 return nil
-            case .thinking(let engine, let depth):
-                return "\(engine.displayName) thinking at depth \(depth)..."
-            case .timeoutWaiting(let engine, let depth):
-                return "\(engine.displayName) depth \(depth) timed out; waiting for best move..."
+            case .thinking(let engine):
+                return "\(engine.displayName) thinking..."
+            case .timeoutWaiting(let engine):
+                return "\(engine.displayName) timed out; waiting for best move..."
             case .notice(let message):
                 return message
             }
@@ -107,8 +107,8 @@ final class GameViewModel: ObservableObject {
     @Published var showsEvaluationBar = true
     /// Number of app-supplied engine suggestion arrows shown on the board.
     @Published private(set) var suggestionArrowCount: Int
-    /// Search depth used for future engine and suggestion searches.
-    @Published private(set) var engineDepth: Int
+    /// Move time used for future engine and suggestion searches.
+    @Published private(set) var engineMoveTime: EngineMoveTime
     /// Embedded engine used for future live replies and suggestion analysis.
     @Published private(set) var selectedEngineKind: DemoEngineKind
     /// ChessCore status mirrored for SwiftUI rendering.
@@ -129,7 +129,7 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var engineDemoConfiguration: EngineDemoConfiguration
     /// Playback state for engine-vs-engine demo mode.
     @Published private(set) var engineDemoRunState: EngineDemoRunState = .paused
-    /// Engine/depth selected for the most recent engine-vs-engine move request.
+    /// Engine and move time selected for the most recent engine-vs-engine move request.
     @Published private(set) var engineDemoLastMoveConfiguration: EngineDemoMoveConfiguration?
 
     /// The human player's color; used to gate whose turn it is.
@@ -216,8 +216,8 @@ final class GameViewModel: ObservableObject {
         } else {
             self.moveProvider = nil
         }
-        // Store the engine depth so future searches use the current setting.
-        self.engineDepth = Self.initialEngineDepth
+        // Store the engine move time so future searches use the current setting.
+        self.engineMoveTime = Self.initialEngineMoveTime
         // Default to Stockfish because it was the original demo engine.
         self.selectedEngineKind = Self.initialEngineKind
         // UI tests can lower the minimum visible thinking time while normal demo launches keep it.
@@ -302,23 +302,17 @@ final class GameViewModel: ObservableObject {
     /// move. Keeping board moves instantaneous avoids stale travel overlays.
     static let engineDemoMoveAnimationDuration: Double = 0
 
-    /// Lowest engine search depth exposed by the game screen.
-    static let minimumEngineDepth = 1
-
-    /// Highest engine search depth exposed by the game screen.
-    static let maximumEngineDepth = 30
-
-    /// UI tests can lower the engine depth to keep smoke flows fast without
+    /// UI tests can lower the engine move time to keep smoke flows fast without
     /// changing the normal demo default.
-    private static var initialEngineDepth: Int {
+    private static var initialEngineMoveTime: EngineMoveTime {
         let environment = ProcessInfo.processInfo.environment
-        guard let depthValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"],
-              let depth = Int(depthValue)
+        guard let moveTimeValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"],
+              let moveTimeMilliseconds = Int(moveTimeValue)
         else {
-            return 8
+            return EngineMoveTime.defaultValue
         }
 
-        return clampedEngineDepth(depth)
+        return EngineMoveTime.closest(milliseconds: moveTimeMilliseconds)
     }
 
     /// UI tests and manual launches can select a non-default engine explicitly.
@@ -393,10 +387,6 @@ final class GameViewModel: ObservableObject {
 
     private static func clampedSuggestionArrowCount(_ count: Int) -> Int {
         min(maximumSuggestionArrowCount, max(0, count))
-    }
-
-    private static func clampedEngineDepth(_ depth: Int) -> Int {
-        min(maximumEngineDepth, max(minimumEngineDepth, depth))
     }
 
     /// Live provider for the currently selected embedded engine.
@@ -526,15 +516,14 @@ final class GameViewModel: ObservableObject {
         refreshCurrentAnalysis(force: true)
     }
 
-    /// Updates the engine search depth used for future searches.
-    func setEngineDepth(_ depth: Int) {
-        let clampedDepth = Self.clampedEngineDepth(depth)
-        guard clampedDepth != engineDepth else { return }
+    /// Updates the engine move time used for future searches.
+    func setEngineMoveTime(_ moveTime: EngineMoveTime) {
+        guard moveTime != engineMoveTime else { return }
 
-        engineDepth = clampedDepth
+        engineMoveTime = moveTime
 
         if isEngineDemoMode {
-            setEngineDemoDepth(clampedDepth, for: boardModel.game.position.state.turn)
+            setEngineDemoMoveTime(moveTime, for: boardModel.game.position.state.turn)
             return
         }
 
@@ -635,15 +624,6 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Updates the app-side safety timeout used by future engine-vs-engine searches.
-    func setEngineDemoSearchTimeout(_ searchTimeout: EngineDemoSearchTimeout) {
-        guard isEngineDemoMode, searchTimeout != engineDemoConfiguration.searchTimeout else { return }
-
-        updateEngineDemoConfiguration { configuration in
-            configuration.searchTimeout = searchTimeout
-        }
-    }
-
     /// Updates the configured engine for one demo side.
     func setEngineDemoEngineKind(_ engineKind: DemoEngineKind, for side: PieceColor) {
         guard isEngineDemoMode else { return }
@@ -659,16 +639,16 @@ final class GameViewModel: ObservableObject {
         syncSelectedEngineToCurrentEngineDemoSideIfIdle()
     }
 
-    /// Updates the configured depth for one demo side.
-    func setEngineDemoDepth(_ depth: Int, for side: PieceColor) {
+    /// Updates the configured move time for one demo side.
+    func setEngineDemoMoveTime(_ moveTime: EngineMoveTime, for side: PieceColor) {
         guard isEngineDemoMode else { return }
 
         updateEngineDemoConfiguration { configuration in
             switch side {
             case .white:
-                configuration.white.depth = EngineDemoConfiguration.clampedDepth(depth)
+                configuration.white.moveTime = moveTime
             case .black:
-                configuration.black.depth = EngineDemoConfiguration.clampedDepth(depth)
+                configuration.black.moveTime = moveTime
             }
         }
         syncSelectedEngineToCurrentEngineDemoSideIfIdle()
@@ -692,30 +672,30 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Enables or disables per-move depth randomization for stress mode.
-    func setEngineDemoRandomizesDepthEachMove(_ randomizesDepthEachMove: Bool) {
+    /// Enables or disables per-move move-time randomization for stress mode.
+    func setEngineDemoRandomizesMoveTimeEachMove(_ randomizesMoveTimeEachMove: Bool) {
         guard isEngineDemoMode else { return }
 
         updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
-            configuration.stress.randomizesDepthEachMove = randomizesDepthEachMove
+            configuration.stress.randomizesMoveTimeEachMove = randomizesMoveTimeEachMove
         }
     }
 
-    /// Updates the minimum depth used by stress mode.
-    func setEngineDemoStressMinimumDepth(_ depth: Int) {
+    /// Updates the minimum move time used by stress mode.
+    func setEngineDemoStressMinimumMoveTime(_ moveTime: EngineMoveTime) {
         guard isEngineDemoMode else { return }
 
         updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
-            configuration.stress.minimumDepth = depth
+            configuration.stress.minimumMoveTime = moveTime
         }
     }
 
-    /// Updates the maximum depth used by stress mode.
-    func setEngineDemoStressMaximumDepth(_ depth: Int) {
+    /// Updates the maximum move time used by stress mode.
+    func setEngineDemoStressMaximumMoveTime(_ moveTime: EngineMoveTime) {
         guard isEngineDemoMode else { return }
 
         updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
-            configuration.stress.maximumDepth = depth
+            configuration.stress.maximumMoveTime = moveTime
         }
     }
 
@@ -916,13 +896,13 @@ final class GameViewModel: ObservableObject {
         boardModel.clearArrows()
 
         if let moveProvider {
-            beginOpponentSearch(engineKind: selectedEngineKind, depth: engineDepth, request: nil)
+            beginOpponentSearch(engineKind: selectedEngineKind, request: nil)
             applyMoveProviderOpponentMove(moveProvider)
             return
         }
 
         let request = engineSearchRequest(purpose: .opponentMove)
-        beginOpponentSearch(engineKind: request.engineKind, depth: request.depth, request: request)
+        beginOpponentSearch(engineKind: request.engineKind, request: request)
         selectedEngineProvider.startOrQueueSearch(request)
     }
 
@@ -936,16 +916,15 @@ final class GameViewModel: ObservableObject {
             selectedEngineProvider.stop()
         }
         selectedEngineKind = moveConfiguration.engineKind
-        engineDepth = moveConfiguration.depth
+        engineMoveTime = moveConfiguration.moveTime
         boardModel.clearArrows()
 
         let request = engineSearchRequest(
             purpose: .opponentMove,
             engineKind: moveConfiguration.engineKind,
-            depth: moveConfiguration.depth,
-            timeoutSeconds: engineDemoConfiguration.searchTimeout.rawValue
+            moveTime: moveConfiguration.moveTime
         )
-        beginOpponentSearch(engineKind: request.engineKind, depth: request.depth, request: request)
+        beginOpponentSearch(engineKind: request.engineKind, request: request)
         provider(for: moveConfiguration.engineKind).startOrQueueSearch(request)
     }
 
@@ -975,14 +954,13 @@ final class GameViewModel: ObservableObject {
     /// Records user-visible state for a newly started opponent reply.
     private func beginOpponentSearch(
         engineKind: DemoEngineKind,
-        depth: Int,
         request: EngineSearchRequest?
     ) {
         opponentSearchStartedAt = Date()
         opponentSearchTimedOut = false
         latestOpponentPrincipalVariationMove = nil
         activeOpponentSearchRequest = request
-        setEngineActivity(.thinking(engine: engineKind, depth: depth))
+        setEngineActivity(.thinking(engine: engineKind))
     }
 
     /// Applies a deterministic provider move for scenario-backed UI tests.
@@ -1028,7 +1006,7 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Ignores stale output from an engine, depth, or position that is no longer the active analysis target.
+    /// Ignores stale output from an engine, move time, or position that is no longer the active analysis target.
     private func shouldAcceptEngineEvent(for request: EngineSearchRequest) -> Bool {
         switch request.purpose {
         case .opponentMove:
@@ -1038,14 +1016,14 @@ final class GameViewModel: ObservableObject {
         case .suggestions:
             guard request.engineKind == selectedEngineKind else { return false }
             return suggestionArrowCount > 0
-                && request.depth == engineDepth
+                && request.moveTimeMilliseconds == engineMoveTime.rawValue
                 && request.fen == fenSerializer.fen(from: boardModel.game.position)
 
         case .evaluation:
             guard request.engineKind == selectedEngineKind else { return false }
             return suggestionArrowCount == 0
                 && showsEvaluationBar
-                && request.depth == engineDepth
+                && request.moveTimeMilliseconds == engineMoveTime.rawValue
                 && request.fen == fenSerializer.fen(from: boardModel.game.position)
         }
     }
@@ -1132,7 +1110,7 @@ final class GameViewModel: ObservableObject {
         // A nil move means the engine has no legal move.
         guard let move else {
             let message = statusNotice ?? (opponentSearchTimedOut
-                ? "\(engineKind.displayName) timed out before returning a move. Try a lower depth."
+                ? "\(engineKind.displayName) timed out before returning a move."
                 : "\(engineKind.displayName) did not return a move.")
             finishOpponentSearchWithoutMove(message: message)
             return
@@ -1174,7 +1152,7 @@ final class GameViewModel: ObservableObject {
         }
 
         opponentSearchTimedOut = true
-        setEngineActivity(.timeoutWaiting(engine: request.engineKind, depth: request.depth))
+        setEngineActivity(.timeoutWaiting(engine: request.engineKind))
     }
 
     /// Handles a timeout where `stop` did not produce a `bestmove` quickly.
@@ -1197,7 +1175,7 @@ final class GameViewModel: ObservableObject {
             )
         } else {
             finishOpponentSearchWithoutMove(
-                message: "\(request.engineKind.displayName) timed out before returning a move. Try a lower depth."
+                message: "\(request.engineKind.displayName) timed out before returning a move."
             )
         }
     }
@@ -1491,21 +1469,21 @@ final class GameViewModel: ObservableObject {
     private func engineSearchRequest(
         purpose: EngineSearchPurpose,
         engineKind: DemoEngineKind? = nil,
-        depth: Int? = nil,
-        timeoutSeconds: Int = EngineSearchRequest.defaultTimeoutSeconds
+        moveTime: EngineMoveTime? = nil
     ) -> EngineSearchRequest {
-        EngineSearchRequest(
+        let resolvedMoveTime = moveTime ?? engineMoveTime
+        return EngineSearchRequest(
             engineKind: engineKind ?? selectedEngineKind,
             purpose: purpose,
             fen: fenSerializer.fen(from: boardModel.game.position),
             sideToMove: boardModel.game.position.state.turn,
-            depth: depth ?? engineDepth,
+            moveTimeMilliseconds: resolvedMoveTime.rawValue,
             multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1,
-            timeoutSeconds: timeoutSeconds
+            safetyTimeoutSeconds: nil
         )
     }
 
-    /// Chooses the concrete engine and depth for the current engine-vs-engine move.
+    /// Chooses the concrete engine and move time for the current engine-vs-engine move.
     private func nextEngineDemoMoveConfiguration() -> EngineDemoMoveConfiguration {
         let side = boardModel.game.position.state.turn
         var sideConfiguration = engineDemoConfiguration.sideConfiguration(for: side)
@@ -1518,18 +1496,20 @@ final class GameViewModel: ObservableObject {
                 sideConfiguration.engineKind = randomizedEngine
             }
 
-            if stress.randomizesDepthEachMove {
-                sideConfiguration.depth = Int.random(
-                    in: stress.minimumDepth...stress.maximumDepth,
-                    using: &engineDemoRandomGenerator
-                )
+            if stress.randomizesMoveTimeEachMove {
+                let allowedMoveTimes = EngineMoveTime.allCases.filter {
+                    $0.rawValue >= stress.minimumMoveTime.rawValue
+                        && $0.rawValue <= stress.maximumMoveTime.rawValue
+                }
+                sideConfiguration.moveTime = allowedMoveTimes.randomElement(using: &engineDemoRandomGenerator)
+                    ?? sideConfiguration.moveTime
             }
         }
 
         return EngineDemoMoveConfiguration(
             side: side,
             engineKind: sideConfiguration.engineKind,
-            depth: EngineDemoConfiguration.clampedDepth(sideConfiguration.depth)
+            moveTime: sideConfiguration.moveTime
         )
     }
 
@@ -1557,7 +1537,7 @@ final class GameViewModel: ObservableObject {
 
         let configuration = engineDemoConfiguration.sideConfiguration(for: boardModel.game.position.state.turn)
         selectedEngineKind = configuration.engineKind
-        engineDepth = configuration.depth
+        engineMoveTime = configuration.moveTime
     }
 
     /// Creates deterministic suggestion arrows from a non-live-engine provider.

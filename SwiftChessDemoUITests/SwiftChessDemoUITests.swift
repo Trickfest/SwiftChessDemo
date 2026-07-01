@@ -161,7 +161,7 @@ final class SwiftChessDemoUITests: XCTestCase {
 
     func testGameEnginePickerSelectsLiveEngineAndUpdatesBoardState() throws {
         let app = XCUIApplication()
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -196,23 +196,28 @@ final class SwiftChessDemoUITests: XCTestCase {
 
     func testEngineDemoModeStartsPausedAndShowsPlaybackControls() throws {
         let app = XCUIApplication()
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         app.launch()
 
         try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
         try requireElement(app.staticTexts["Pacing"].firstMatch, named: "setup pacing label")
-        try requireElement(app.staticTexts["Timeout"].firstMatch, named: "setup timeout label")
 
-        let setupTimeoutPicker = try requireElement(
-            app.descendants(matching: .any)["Setup.engineDemoTimeoutPicker"].firstMatch,
-            named: "setup engine demo timeout picker"
+        let setupWhiteMoveTimePicker = try requireElement(
+            app.descendants(matching: .any)["Setup.engineDemoWhiteMoveTimePicker"].firstMatch,
+            named: "setup white move-time picker"
         )
-        try select("5s", from: setupTimeoutPicker, in: app)
+        try select("500ms", from: setupWhiteMoveTimePicker, in: app)
+        let setupBlackMoveTimePicker = try requireElement(
+            app.descendants(matching: .any)["Setup.engineDemoBlackMoveTimePicker"].firstMatch,
+            named: "setup black move-time picker"
+        )
+        try select("2s", from: setupBlackMoveTimePicker, in: app)
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
         try waitForGameBoardState(containing: "Mode: Engine vs Engine", in: app, named: "engine demo mode")
         try waitForGameBoardState(containing: "Demo state: Play", in: app, named: "engine demo paused state")
-        try waitForGameBoardState(containing: "Timeout: 5s", in: app, named: "engine demo setup timeout")
+        try waitForGameBoardState(containing: "White move time: 500ms", in: app, named: "engine demo white setup move time")
+        try waitForGameBoardState(containing: "Black move time: 2s", in: app, named: "engine demo black setup move time")
 
         try requireElement(
             app.descendants(matching: .any)["Game.engineDemoPlayPauseButton"].firstMatch,
@@ -226,14 +231,14 @@ final class SwiftChessDemoUITests: XCTestCase {
             app.descendants(matching: .any)["Game.engineDemoPacingPicker"].firstMatch,
             named: "engine demo pacing picker"
         )
-        let timeoutPicker = try requireElement(
-            app.descendants(matching: .any)["Game.engineDemoTimeoutPicker"].firstMatch,
-            named: "engine demo timeout picker"
+        let whiteMoveTimePicker = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoWhiteMoveTimePicker"].firstMatch,
+            named: "engine demo white move-time picker"
         )
-        XCTAssertEqual(timeoutPicker.value as? String, "5s")
-        try select("10s", from: timeoutPicker, in: app)
-        try waitForElementValue(timeoutPicker, expectedValue: "10s", named: "engine demo timeout picker")
-        try waitForGameBoardState(containing: "Timeout: 10s", in: app, named: "engine demo updated timeout")
+        XCTAssertEqual(whiteMoveTimePicker.value as? String, "500ms")
+        try select("1s", from: whiteMoveTimePicker, in: app)
+        try waitForElementValue(whiteMoveTimePicker, expectedValue: "1s", named: "engine demo white move-time picker")
+        try waitForGameBoardState(containing: "White move time: 1s", in: app, named: "engine demo updated move time")
         XCTAssertFalse(app.descendants(matching: .any)["Game.enginePicker"].firstMatch.exists)
     }
 
@@ -351,27 +356,23 @@ final class SwiftChessDemoUITests: XCTestCase {
         )
     }
 
-    func testGameEngineDepthStepperUpdatesGameDepth() throws {
+    func testGameEngineMoveTimePickerUpdatesGameMoveTime() throws {
         let app = moveSmokeTestApplication(id: "white-four-move-smoke")
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
-        try waitForGameBoardState(containing: "Depth: 1", in: app, named: "initial engine depth")
+        try waitForGameBoardState(containing: "Move time: 250ms", in: app, named: "initial engine move time")
 
-        let incrementButton = try scrollUntilHittable(
-            app.buttons["Game.engineDepthStepper-Increment"].firstMatch,
-            named: "engine depth increment button",
+        let moveTimePicker = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.engineMoveTimePicker"].firstMatch,
+            named: "engine move-time picker",
             in: app
         )
-        incrementButton.tap()
-        try waitForGameBoardState(containing: "Depth: 2", in: app, named: "incremented engine depth")
+        try select("500ms", from: moveTimePicker, in: app)
+        try waitForGameBoardState(containing: "Move time: 500ms", in: app, named: "updated engine move time")
 
-        let decrementButton = try requireElement(
-            app.buttons["Game.engineDepthStepper-Decrement"].firstMatch,
-            named: "engine depth decrement button"
-        )
-        decrementButton.tap()
-        try waitForGameBoardState(containing: "Depth: 1", in: app, named: "decremented engine depth")
+        try select("250ms", from: moveTimePicker, in: app)
+        try waitForGameBoardState(containing: "Move time: 250ms", in: app, named: "restored engine move time")
     }
 
     func testGameEvaluationBarRendersAndToggles() throws {
@@ -900,7 +901,7 @@ final class SwiftChessDemoUITests: XCTestCase {
 
     private func moveSmokeTestApplication(id: String) -> XCUIApplication {
         let app = scenarioTestApplication(id: id)
-        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         return app
     }
 

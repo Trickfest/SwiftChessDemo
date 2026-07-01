@@ -31,6 +31,44 @@ enum DemoEngineKind: String, CaseIterable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// Move-time values exposed by the demo for live engine searches.
+enum EngineMoveTime: Int, CaseIterable, Identifiable, Sendable {
+    case quarterSecond = 250
+    case halfSecond = 500
+    case oneSecond = 1_000
+    case twoSeconds = 2_000
+    case fiveSeconds = 5_000
+    case tenSeconds = 10_000
+
+    var id: Int { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .quarterSecond:
+            return "250ms"
+        case .halfSecond:
+            return "500ms"
+        case .oneSecond:
+            return "1s"
+        case .twoSeconds:
+            return "2s"
+        case .fiveSeconds:
+            return "5s"
+        case .tenSeconds:
+            return "10s"
+        }
+    }
+
+    static let defaultValue: EngineMoveTime = .oneSecond
+
+    static func closest(milliseconds: Int) -> EngineMoveTime {
+        let clampedMilliseconds = max(1, milliseconds)
+        return allCases.min { lhs, rhs in
+            abs(lhs.rawValue - clampedMilliseconds) < abs(rhs.rawValue - clampedMilliseconds)
+        } ?? defaultValue
+    }
+}
+
 /// Distinguishes searches that apply a move from analysis searches that update
 /// display-only UI such as evaluation and suggestion arrows.
 enum EngineSearchPurpose: Equatable, Sendable {
@@ -50,32 +88,39 @@ enum EngineSearchPurpose: Equatable, Sendable {
 
 /// One engine request against one board position.
 struct EngineSearchRequest: Equatable, Sendable {
-    static let defaultTimeoutSeconds = 30
+    static let safetyTimeoutGraceSeconds = 3
 
     let engineKind: DemoEngineKind
     let purpose: EngineSearchPurpose
     let fen: String
     let sideToMove: PieceColor
-    let depth: Int
+    let moveTimeMilliseconds: Int
     let multiPVCount: Int
-    let timeoutSeconds: Int
+    let safetyTimeoutSeconds: Int
 
     init(
         engineKind: DemoEngineKind,
         purpose: EngineSearchPurpose,
         fen: String,
         sideToMove: PieceColor,
-        depth: Int,
+        moveTimeMilliseconds: Int,
         multiPVCount: Int,
-        timeoutSeconds: Int = defaultTimeoutSeconds
+        safetyTimeoutSeconds: Int? = nil
     ) {
         self.engineKind = engineKind
         self.purpose = purpose
         self.fen = fen
         self.sideToMove = sideToMove
-        self.depth = depth
+        self.moveTimeMilliseconds = max(1, moveTimeMilliseconds)
         self.multiPVCount = multiPVCount
-        self.timeoutSeconds = max(1, timeoutSeconds)
+        self.safetyTimeoutSeconds = max(
+            1,
+            safetyTimeoutSeconds ?? Self.defaultSafetyTimeoutSeconds(for: self.moveTimeMilliseconds)
+        )
+    }
+
+    static func defaultSafetyTimeoutSeconds(for moveTimeMilliseconds: Int) -> Int {
+        ((max(1, moveTimeMilliseconds) + 999) / 1_000) + safetyTimeoutGraceSeconds
     }
 }
 

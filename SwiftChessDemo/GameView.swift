@@ -270,7 +270,7 @@ struct GameView: View {
             + "Coordinates: \(coordinateState), "
             + "Mode: \(viewModel.gameMode.displayName), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
-            + "Depth: \(viewModel.engineDepth), "
+            + "Move time: \(viewModel.engineMoveTime.displayName), "
             + "Engine: \(viewModel.selectedEngineKind.displayName), "
             + "Engine status: \(viewModel.engineActivity.accessibilityValue), "
             + engineDemoAccessibilityValue
@@ -283,11 +283,10 @@ struct GameView: View {
 
         return "Demo state: \(viewModel.engineDemoPrimaryControlTitle), "
             + "White engine: \(viewModel.engineDemoConfiguration.white.engineKind.displayName), "
-            + "White depth: \(viewModel.engineDemoConfiguration.white.depth), "
+            + "White move time: \(viewModel.engineDemoConfiguration.white.moveTime.displayName), "
             + "Black engine: \(viewModel.engineDemoConfiguration.black.engineKind.displayName), "
-            + "Black depth: \(viewModel.engineDemoConfiguration.black.depth), "
-            + "Pacing: \(viewModel.engineDemoConfiguration.pacing.displayName), "
-            + "Timeout: \(viewModel.engineDemoConfiguration.searchTimeout.displayName), "
+            + "Black move time: \(viewModel.engineDemoConfiguration.black.moveTime.displayName), "
+            + "Pacing: \(viewModel.engineDemoConfiguration.pacing.displayName)"
     }
 
     private func engineDemoSideConfiguration(for color: PieceColor) -> EngineDemoSideConfiguration {
@@ -333,7 +332,7 @@ struct GameView: View {
                     moveListToggle
                     evaluationBarToggle
                     if !viewModel.isEngineDemoMode {
-                        engineDepthControl
+                        engineMoveTimeControl
                     }
                 }
             } else {
@@ -368,7 +367,7 @@ struct GameView: View {
             }
 
             if !viewModel.isEngineDemoMode {
-                engineDepthControl
+                engineMoveTimeControl
             }
         }
     }
@@ -402,7 +401,6 @@ struct GameView: View {
                 }
 
                 engineDemoPacingControl
-                engineDemoTimeoutControl
                 engineDemoSideControl(title: "White", color: .white)
                 engineDemoSideControl(title: "Black", color: .black)
                 engineDemoStressControls
@@ -431,27 +429,6 @@ struct GameView: View {
         .accessibilityValue(viewModel.engineDemoConfiguration.pacing.displayName)
     }
 
-    private var engineDemoTimeoutControl: some View {
-        Menu {
-            ForEach(EngineDemoSearchTimeout.allCases) { timeout in
-                Button(timeout.displayName) {
-                    viewModel.setEngineDemoSearchTimeout(timeout)
-                }
-                .disabled(timeout == viewModel.engineDemoConfiguration.searchTimeout)
-            }
-        } label: {
-            displayControlLabel(
-                title: "Timeout",
-                value: viewModel.engineDemoConfiguration.searchTimeout.displayName,
-                systemImage: "hourglass"
-            )
-        }
-        .frame(maxWidth: .infinity)
-        .buttonStyle(.bordered)
-        .accessibilityIdentifier("Game.engineDemoTimeoutPicker")
-        .accessibilityValue(viewModel.engineDemoConfiguration.searchTimeout.displayName)
-    }
-
     private func engineDemoSideControl(title: String, color: PieceColor) -> some View {
         VStack(spacing: 8) {
             Menu {
@@ -473,22 +450,24 @@ struct GameView: View {
             .accessibilityIdentifier("Game.engineDemo\(title)EnginePicker")
             .accessibilityValue(engineDemoSideConfiguration(for: color).engineKind.displayName)
 
-            Stepper(
-                value: Binding(
-                    get: { engineDemoSideConfiguration(for: color).depth },
-                    set: { viewModel.setEngineDemoDepth($0, for: color) }
-                ),
-                in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
-            ) {
+            Menu {
+                ForEach(EngineMoveTime.allCases) { moveTime in
+                    Button(moveTime.displayName) {
+                        viewModel.setEngineDemoMoveTime(moveTime, for: color)
+                    }
+                    .disabled(moveTime == engineDemoSideConfiguration(for: color).moveTime)
+                }
+            } label: {
                 displayControlLabel(
-                    title: "\(title) Depth",
-                    value: "\(engineDemoSideConfiguration(for: color).depth)",
-                    systemImage: "speedometer"
+                    title: "\(title) Move Time",
+                    value: engineDemoSideConfiguration(for: color).moveTime.displayName,
+                    systemImage: "timer"
                 )
             }
             .frame(maxWidth: .infinity)
-            .accessibilityIdentifier("Game.engineDemo\(title)DepthStepper")
-            .accessibilityValue("\(engineDemoSideConfiguration(for: color).depth)")
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("Game.engineDemo\(title)MoveTimePicker")
+            .accessibilityValue(engineDemoSideConfiguration(for: color).moveTime.displayName)
         }
     }
 
@@ -516,49 +495,50 @@ struct GameView: View {
                 }
 
                 displayToggleRow(
-                    title: "Random depths",
-                    systemImage: "speedometer",
-                    isOn: viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove,
-                    accessibilityIdentifier: "Game.engineDemoRandomDepthsToggle"
+                    title: "Random move times",
+                    systemImage: "timer",
+                    isOn: viewModel.engineDemoConfiguration.stress.randomizesMoveTimeEachMove,
+                    accessibilityIdentifier: "Game.engineDemoRandomMoveTimesToggle"
                 ) {
-                    viewModel.setEngineDemoRandomizesDepthEachMove(
-                        !viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove
+                    viewModel.setEngineDemoRandomizesMoveTimeEachMove(
+                        !viewModel.engineDemoConfiguration.stress.randomizesMoveTimeEachMove
                     )
                 }
 
-                if viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove {
-                    engineDemoStressDepthControl(title: "Minimum", isMinimum: true)
-                    engineDemoStressDepthControl(title: "Maximum", isMinimum: false)
+                if viewModel.engineDemoConfiguration.stress.randomizesMoveTimeEachMove {
+                    engineDemoStressMoveTimeControl(title: "Minimum", isMinimum: true)
+                    engineDemoStressMoveTimeControl(title: "Maximum", isMinimum: false)
                 }
             }
         }
     }
 
-    private func engineDemoStressDepthControl(title: String, isMinimum: Bool) -> some View {
-        Stepper(
-            value: Binding(
-                get: {
-                    isMinimum
-                        ? viewModel.engineDemoConfiguration.stress.minimumDepth
-                        : viewModel.engineDemoConfiguration.stress.maximumDepth
-                },
-                set: { depth in
+    private func engineDemoStressMoveTimeControl(title: String, isMinimum: Bool) -> some View {
+        let selectedMoveTime = isMinimum
+            ? viewModel.engineDemoConfiguration.stress.minimumMoveTime
+            : viewModel.engineDemoConfiguration.stress.maximumMoveTime
+
+        return Menu {
+            ForEach(EngineMoveTime.allCases) { moveTime in
+                Button(moveTime.displayName) {
                     if isMinimum {
-                        viewModel.setEngineDemoStressMinimumDepth(depth)
+                        viewModel.setEngineDemoStressMinimumMoveTime(moveTime)
                     } else {
-                        viewModel.setEngineDemoStressMaximumDepth(depth)
+                        viewModel.setEngineDemoStressMaximumMoveTime(moveTime)
                     }
                 }
-            ),
-            in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
-        ) {
+                .disabled(moveTime == selectedMoveTime)
+            }
+        } label: {
             displayControlLabel(
-                title: "\(title) Depth",
-                value: "\(isMinimum ? viewModel.engineDemoConfiguration.stress.minimumDepth : viewModel.engineDemoConfiguration.stress.maximumDepth)",
+                title: "\(title) Move Time",
+                value: selectedMoveTime.displayName,
                 systemImage: "slider.horizontal.3"
             )
         }
-        .accessibilityIdentifier("Game.engineDemoStress\(title)DepthStepper")
+        .buttonStyle(.bordered)
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("Game.engineDemoStress\(title)MoveTimePicker")
     }
 
     private var engineDemoPrimaryControlSystemImage: String {
@@ -742,23 +722,25 @@ struct GameView: View {
         }
     }
 
-    private var engineDepthControl: some View {
-        Stepper(
-            value: Binding(
-                get: { viewModel.engineDepth },
-                set: { viewModel.setEngineDepth($0) }
-            ),
-            in: GameViewModel.minimumEngineDepth...GameViewModel.maximumEngineDepth
-        ) {
+    private var engineMoveTimeControl: some View {
+        Menu {
+            ForEach(EngineMoveTime.allCases) { moveTime in
+                Button(moveTime.displayName) {
+                    viewModel.setEngineMoveTime(moveTime)
+                }
+                .disabled(moveTime == viewModel.engineMoveTime)
+            }
+        } label: {
             displayControlLabel(
-                title: "Depth",
-                value: "\(viewModel.engineDepth)",
-                systemImage: "speedometer"
+                title: "Move Time",
+                value: viewModel.engineMoveTime.displayName,
+                systemImage: "timer"
             )
         }
         .frame(maxWidth: .infinity)
-        .accessibilityIdentifier("Game.engineDepthStepper")
-        .accessibilityValue("\(viewModel.engineDepth)")
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.engineMoveTimePicker")
+        .accessibilityValue(viewModel.engineMoveTime.displayName)
     }
 
     private var coordinateLabelsToggle: some View {

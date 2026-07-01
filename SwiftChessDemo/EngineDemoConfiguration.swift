@@ -64,40 +64,25 @@ enum EngineDemoPacing: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// App-side safety cutoff for one engine-vs-engine search.
-enum EngineDemoSearchTimeout: Int, CaseIterable, Identifiable, Sendable {
-    case fiveSeconds = 5
-    case tenSeconds = 10
-    case thirtySeconds = 30
-
-    var id: Int { rawValue }
-
-    var displayName: String {
-        "\(rawValue)s"
-    }
-}
-
-/// Engine and depth for one side in engine-vs-engine mode.
+/// Engine and move time for one side in engine-vs-engine mode.
 struct EngineDemoSideConfiguration: Equatable, Sendable {
     var engineKind: DemoEngineKind
-    var depth: Int
+    var moveTime: EngineMoveTime
 }
 
-/// Optional stress settings that randomize the engine and/or depth per move.
+/// Optional stress settings that randomize the engine and/or move time per move.
 struct EngineDemoStressConfiguration: Equatable, Sendable {
     var isEnabled: Bool = false
     var randomizesEngineEachMove: Bool = false
-    var randomizesDepthEachMove: Bool = false
-    var minimumDepth: Int = 1
-    var maximumDepth: Int = 8
+    var randomizesMoveTimeEachMove: Bool = false
+    var minimumMoveTime: EngineMoveTime = .quarterSecond
+    var maximumMoveTime: EngineMoveTime = .twoSeconds
     var seed: UInt64 = 20260630
 
     func normalized() -> EngineDemoStressConfiguration {
         var copy = self
-        copy.minimumDepth = EngineDemoConfiguration.clampedDepth(copy.minimumDepth)
-        copy.maximumDepth = EngineDemoConfiguration.clampedDepth(copy.maximumDepth)
-        if copy.minimumDepth > copy.maximumDepth {
-            copy.maximumDepth = copy.minimumDepth
+        if copy.minimumMoveTime.rawValue > copy.maximumMoveTime.rawValue {
+            copy.maximumMoveTime = copy.minimumMoveTime
         }
         return copy
     }
@@ -108,29 +93,19 @@ struct EngineDemoConfiguration: Equatable, Sendable {
     var white: EngineDemoSideConfiguration
     var black: EngineDemoSideConfiguration
     var pacing: EngineDemoPacing = .oneSecond
-    var searchTimeout: EngineDemoSearchTimeout = .thirtySeconds
     var stress: EngineDemoStressConfiguration = EngineDemoStressConfiguration()
 
-    static let defaultDepth = 8
-    static let minimumDepth = 1
-    static let maximumDepth = 30
+    static let defaultMoveTime: EngineMoveTime = .oneSecond
 
-    static func defaultConfiguration(defaultDepth: Int = defaultDepth) -> EngineDemoConfiguration {
-        let clampedDepth = clampedDepth(defaultDepth)
+    static func defaultConfiguration(defaultMoveTime: EngineMoveTime = defaultMoveTime) -> EngineDemoConfiguration {
         return EngineDemoConfiguration(
-            white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: clampedDepth),
-            black: EngineDemoSideConfiguration(engineKind: .arasan, depth: clampedDepth)
+            white: EngineDemoSideConfiguration(engineKind: .stockfish, moveTime: defaultMoveTime),
+            black: EngineDemoSideConfiguration(engineKind: .arasan, moveTime: defaultMoveTime)
         )
-    }
-
-    static func clampedDepth(_ depth: Int) -> Int {
-        min(maximumDepth, max(minimumDepth, depth))
     }
 
     func normalized() -> EngineDemoConfiguration {
         var copy = self
-        copy.white.depth = Self.clampedDepth(copy.white.depth)
-        copy.black.depth = Self.clampedDepth(copy.black.depth)
         copy.stress = copy.stress.normalized()
         return copy
     }
@@ -145,11 +120,11 @@ struct EngineDemoConfiguration: Equatable, Sendable {
     }
 }
 
-/// Concrete engine/depth chosen for one engine-vs-engine move.
+/// Concrete engine and move time chosen for one engine-vs-engine move.
 struct EngineDemoMoveConfiguration: Equatable, Sendable {
     let side: PieceColor
     let engineKind: DemoEngineKind
-    let depth: Int
+    let moveTime: EngineMoveTime
 }
 
 /// Playback state for engine-vs-engine demo mode.

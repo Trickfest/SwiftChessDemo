@@ -68,7 +68,7 @@ struct ContentView: View {
         _playerSide = State(initialValue: PlayerSide(pieceColor: requestedScenario?.initialPerspective ?? .white))
         _gameMode = State(initialValue: .humanVsEngine)
         _engineDemoConfiguration = State(
-            initialValue: EngineDemoConfiguration.defaultConfiguration(defaultDepth: Self.initialEngineDepth)
+            initialValue: EngineDemoConfiguration.defaultConfiguration(defaultMoveTime: Self.initialEngineMoveTime)
         )
     }
 
@@ -199,7 +199,6 @@ struct ContentView: View {
             engineSideControl(title: "Black", color: .black)
 
             engineDemoPacingControl
-            engineDemoTimeoutControl
         }
         .padding(14)
         .background {
@@ -225,23 +224,6 @@ struct ContentView: View {
         }
     }
 
-    private var engineDemoTimeoutControl: some View {
-        HStack {
-            Text("Timeout")
-                .font(.subheadline)
-
-            Spacer()
-
-            Picker("Timeout", selection: $engineDemoConfiguration.searchTimeout) {
-                ForEach(EngineDemoSearchTimeout.allCases) { timeout in
-                    Text(timeout.displayName).tag(timeout)
-                }
-            }
-            .labelsHidden()
-            .accessibilityIdentifier("Setup.engineDemoTimeoutPicker")
-        }
-    }
-
     private func engineSideControl(title: String, color: PieceColor) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Picker("\(title) Engine", selection: engineKindBinding(for: color)) {
@@ -251,15 +233,21 @@ struct ContentView: View {
             }
             .accessibilityIdentifier("Setup.engineDemo\(title)EnginePicker")
 
-            Stepper(
-                value: engineDepthBinding(for: color),
-                in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
-            ) {
-                Text("\(title) depth \(engineDepth(for: color))")
+            HStack {
+                Text("\(title) move time")
                     .font(.caption)
+
+                Spacer()
+
+                Picker("\(title) Move Time", selection: engineMoveTimeBinding(for: color)) {
+                    ForEach(EngineMoveTime.allCases) { moveTime in
+                        Text(moveTime.displayName).tag(moveTime)
+                    }
+                }
+                .labelsHidden()
+                .accessibilityIdentifier("Setup.engineDemo\(title)MoveTimePicker")
+                .accessibilityValue(engineMoveTime(for: color).displayName)
             }
-            .accessibilityIdentifier("Setup.engineDemo\(title)DepthStepper")
-            .accessibilityValue("\(engineDepth(for: color))")
         }
     }
 
@@ -276,33 +264,33 @@ struct ContentView: View {
         }
     }
 
-    private func engineDepthBinding(for color: PieceColor) -> Binding<Int> {
+    private func engineMoveTimeBinding(for color: PieceColor) -> Binding<EngineMoveTime> {
         Binding {
-            engineDepth(for: color)
-        } set: { depth in
+            engineMoveTime(for: color)
+        } set: { moveTime in
             switch color {
             case .white:
-                engineDemoConfiguration.white.depth = EngineDemoConfiguration.clampedDepth(depth)
+                engineDemoConfiguration.white.moveTime = moveTime
             case .black:
-                engineDemoConfiguration.black.depth = EngineDemoConfiguration.clampedDepth(depth)
+                engineDemoConfiguration.black.moveTime = moveTime
             }
         }
     }
 
-    private func engineDepth(for color: PieceColor) -> Int {
-        engineDemoConfiguration.sideConfiguration(for: color).depth
+    private func engineMoveTime(for color: PieceColor) -> EngineMoveTime {
+        engineDemoConfiguration.sideConfiguration(for: color).moveTime
     }
 
     /// UI-test launches can lower the setup default so live engine smoke tests stay fast.
-    private static var initialEngineDepth: Int {
+    private static var initialEngineMoveTime: EngineMoveTime {
         let environment = ProcessInfo.processInfo.environment
-        guard let depthValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"],
-              let depth = Int(depthValue)
+        guard let moveTimeValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"],
+              let moveTimeMilliseconds = Int(moveTimeValue)
         else {
-            return EngineDemoConfiguration.defaultDepth
+            return EngineDemoConfiguration.defaultMoveTime
         }
 
-        return EngineDemoConfiguration.clampedDepth(depth)
+        return EngineMoveTime.closest(milliseconds: moveTimeMilliseconds)
     }
 }
 

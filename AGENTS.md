@@ -58,7 +58,7 @@ demo source and GPL-covered Stockfish-linked distribution, and must update
   perspectives. They launch named scenarios in `testDrivesWhite` or
   `testDrivesBlack` mode so engine-side moves are deterministic and not coupled
   to live engine startup time or best-move changes.
-- `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` keeps UI-test searches fast.
+- `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS=250` keeps UI-test searches fast.
   `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` can reduce the visible
   thinking pause for tests that still exercise live engine replies. Normal app
   launches should not set these flags and should default to Stockfish unless

@@ -107,10 +107,12 @@ Data flow at a glance:
 - The selected live engine streams `info` lines through its provider, where
   `ChessUCI` parses them into White-positive evaluation values for
   `ChessEvaluationBar`.
-- If a live engine search reaches the demo timeout, SwiftChessDemo asks the
-  engine to stop, applies the returned `bestmove` when available, and uses the
-  existing status display for a brief nonfatal notice that the timeout fallback
-  was used before returning to the normal game status.
+- Live engine searches use UCI `go movetime`, so the selected move-time value is
+  the engine's intended thinking budget. SwiftChessDemo also keeps an app-side
+  safety timeout slightly above that budget, asks the engine to stop if needed,
+  applies the returned `bestmove` when available, and uses the existing status
+  display for a brief nonfatal notice before returning to the normal game
+  status.
 - When suggestions are enabled, SwiftChessDemo asks the selected engine for up
   to three MultiPV analysis lines on the human player's turn, caches the ranked
   first moves, and filters the visible ChessUI arrows according to the user's
@@ -118,21 +120,20 @@ Data flow at a glance:
   moves to suggest.
 - The engine returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
 - Engine-vs-engine mode starts paused, lets the user choose White and Black
-  engines and depths independently, and uses Play/Pause or Step controls to
-  apply engine moves through the same ChessCore move-application path as normal
-  gameplay.
-- Engine-vs-engine mode also lets the user choose an app-side safety timeout
-  for each search. The timeout is not UCI `movetime`; the app still starts a
-  depth search, then sends `stop` if the selected engine has not returned within
-  the selected timeout and applies the best move reported so far when possible.
+  engines and move-time budgets independently, and uses Play/Pause or Step
+  controls to apply engine moves through the same ChessCore move-application
+  path as normal gameplay.
+- Engine-vs-engine uses the same UCI `go movetime` search policy as
+  human-vs-engine play. The app derives its safety timeout from the selected
+  move time, so there is no separate user-facing timeout setting.
 - Engine-vs-engine mode automatically claims ChessCore draw claims such as
   threefold repetition and the 50-move rule. Human-vs-engine games leave those
   claimable draws available to the player instead of ending automatically.
-- Engine-vs-engine stress mode can randomize the engine and/or depth before
-  each move within a configured range. Randomization happens before a search
-  starts, never while an engine request is in flight, so the mode is useful for
-  exercising engine switching and timeout boundaries without changing the
-  normal human-vs-engine game.
+- Engine-vs-engine stress mode can randomize the engine and/or move-time budget
+  before each move within a configured range. Randomization happens before a
+  search starts, never while an engine request is in flight, so the mode is
+  useful for exercising engine switching and safety-timeout boundaries without
+  changing the normal human-vs-engine game.
 - Scenario replay uses a named JSON scenario plus a bundled PGN fixture. The
   PGN is parsed through `ChessCore.PGNSerializer`, concrete moves are held in
   memory, and the same move-application path updates the board, move list, and
@@ -145,8 +146,8 @@ Reference-app boundaries:
   game model, run engines, choose suggestion moves, or apply moves on behalf of
   the app.
 - ChessUCI formats and parses protocol text. It does not start an engine,
-  serialize searches, choose depth or MultiPV policy, or decide how analysis
-  should affect UI.
+  serialize searches, choose move-time or MultiPV policy, or decide how
+  analysis should affect UI.
 - Stockfish integration lives in the default app target through
   `StockfishEmbedded`. That linked distribution must comply with GPLv3.
   `ArasanEmbedded` is also available from the same game screen as a
@@ -160,10 +161,9 @@ Key files to read:
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme,
   engine-selection, and coordinate-label switching during play, visible ChessUI
   status and move-list components, status-row engine activity and timeout
-  notices, optional evaluation-bar display, in-game engine-depth control,
+  notices, optional evaluation-bar display, in-game engine move-time control,
   selectable move-suggestion arrows, engine-vs-engine playback controls,
-  engine-vs-engine safety timeout selection, compact horizontal move-list layout
-  on iPhone, and navigation flow.
+  compact horizontal move-list layout on iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
   fallback, evaluation normalization, selected-engine MultiPV suggestion
@@ -171,14 +171,14 @@ Key files to read:
   engine-vs-engine games, stress-mode randomization, and ChessCore game-status
   integration.
 - `SwiftChessDemo/EngineDemoConfiguration.swift`: value types that describe
-  engine-vs-engine mode, per-side engine/depth settings, pacing, search safety
-  timeout, and optional deterministic stress randomization.
+  engine-vs-engine mode, per-side engine/move-time settings, pacing, and
+  optional deterministic stress randomization.
 - `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
-  serialized search requests, UCI command formatting/parsing, timeout `stop`
-  handling, and cancelled suggestion-output handling.
+  serialized `go movetime` search requests, UCI command formatting/parsing,
+  safety-timeout `stop` handling, and cancelled suggestion-output handling.
 - `SwiftChessDemo/ArasanMoveProvider.swift`: embedded Arasan lifecycle,
-  serialized search requests, UCI command formatting/parsing, timeout `stop`
-  handling, and cancelled suggestion-output handling.
+  serialized `go movetime` search requests, UCI command formatting/parsing,
+  safety-timeout `stop` handling, and cancelled suggestion-output handling.
 - `SwiftChessDemo/DemoEngineProvider.swift`: app-local engine abstraction and
   shared request/event models used by live engine providers.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
@@ -228,18 +228,18 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
   `testDrivesBlack` mode so one side is driven by UI-test taps while the
   scenario supplies the opposing replies. This keeps move-flow coverage
   deterministic without starting a live engine.
-- The game-flow tests set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH=1` to keep
-  simulator runs fast. UI tests that exercise live engine replies can also set
-  `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to reduce the visible
+- The game-flow tests set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS=250` to
+  keep simulator runs fast. UI tests that exercise live engine replies can also
+  set `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to reduce the visible
   thinking pause. Normal app launches do not set these flags and default to
   Stockfish unless the player selects Arasan from the game screen.
 - Engine-vs-engine unit tests use fake engine providers to verify that Play,
-  Pause, Step, per-side engine/depth settings, request timeouts, automatic
-  draw-claim policy, and seeded stress randomization behave deterministically
-  without starting live engine processes.
+  Pause, Step, per-side engine/move-time settings, safety-timeout propagation,
+  automatic draw-claim policy, and seeded stress randomization behave
+  deterministically without starting live engine processes.
 - Engine-vs-engine UI coverage verifies that the setup mode launches into a
-  paused game with demo-only playback controls and timeout selection visible,
-  and the normal live-game engine picker hidden.
+  paused game with demo-only playback controls visible and the normal live-game
+  engine picker hidden.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live engine analysis.

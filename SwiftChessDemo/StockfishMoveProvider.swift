@@ -107,7 +107,7 @@ final class StockfishMoveProvider: DemoEngineProvider {
         engine.sendCommand(UCICommand.isReady.string)
         engine.sendCommand(UCICommand.newGame.string)
         engine.sendCommand(UCICommand.position(.fen(request.fen)).string)
-        engine.sendCommand(UCICommand.go(.depth(request.depth)).string)
+        engine.sendCommand(UCICommand.go(.moveTime(milliseconds: request.moveTimeMilliseconds)).string)
 
         startTimeout(token: searchToken)
     }
@@ -155,7 +155,7 @@ final class StockfishMoveProvider: DemoEngineProvider {
     }
 
     private func startTimeout(token: UUID) {
-        let timeoutSeconds = Self.timeoutSeconds(for: activeRequest)
+        let timeoutSeconds = Self.safetyTimeoutSeconds(for: activeRequest)
         timeoutTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(timeoutSeconds))
@@ -168,8 +168,11 @@ final class StockfishMoveProvider: DemoEngineProvider {
     }
 
     /// Returns the app-side safety timeout for a search request.
-    static func timeoutSeconds(for request: EngineSearchRequest?) -> Int {
-        request?.timeoutSeconds ?? EngineSearchRequest.defaultTimeoutSeconds
+    static func safetyTimeoutSeconds(for request: EngineSearchRequest?) -> Int {
+        request?.safetyTimeoutSeconds
+            ?? EngineSearchRequest.defaultSafetyTimeoutSeconds(
+                for: EngineMoveTime.defaultValue.rawValue
+            )
     }
 
     private func handleTimeout(token: UUID) {

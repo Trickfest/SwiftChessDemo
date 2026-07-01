@@ -13,18 +13,18 @@ for a release. Tagged releases use dated version headings.
   Stockfish and Arasan against each other.
 - Added Engine vs Engine playback controls for Play/Pause, one-move Step, and
   post-move pacing.
-- Added per-side engine and depth configuration for Engine vs Engine games.
-- Added an Engine vs Engine search-timeout picker for the app-side safety
-  cutoff used when a depth search takes too long.
+- Added per-side engine and move-time configuration for Engine vs Engine games.
 - Added optional Engine vs Engine stress controls that can randomize engine
-  selection and/or depth before each move.
+  selection and/or move time before each move.
 
 ### Changed
 
 - Kept Engine vs Engine board input read-only while applying generated moves
   through the same ChessCore-backed move path used by normal gameplay.
-- Hid normal human-game engine, depth, and suggestion controls in Engine vs
+- Hid normal human-game engine, move-time, and suggestion controls in Engine vs
   Engine mode so demo-only controls own engine selection.
+- Changed live engine searches from fixed-depth UCI requests to UCI `movetime`
+  requests and derived the app-side safety timeout from the selected move time.
 - Changed Engine vs Engine games to automatically claim threefold-repetition
   and 50-move draw claims while leaving human-vs-engine draw claims manual.
 - Changed Engine vs Engine board updates to use instant move feedback so
@@ -34,10 +34,10 @@ for a release. Tagged releases use dated version headings.
 ### Fixed
 
 - Added view-model coverage for Engine vs Engine pause, step, side-specific
-  engine/depth alternation, timeout propagation, automatic draw claiming, and
-  seeded stress randomization across ten ply.
+  engine/move-time alternation, safety-timeout propagation, automatic draw
+  claiming, and seeded stress randomization across ten ply.
 - Added UI coverage that verifies Engine vs Engine starts paused with
-  demo-only playback and timeout controls visible.
+  demo-only playback controls visible.
 
 ## 1.0.4 - 2026-06-30
 
