@@ -194,6 +194,49 @@ final class SwiftChessDemoUITests: XCTestCase {
         try waitForEvaluationValueIsAvailable(evaluationBar, named: "restored Stockfish evaluation")
     }
 
+    func testEngineDemoModeStartsPausedAndShowsPlaybackControls() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"] = "1"
+        app.launch()
+
+        try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
+        try requireElement(app.staticTexts["Pacing"].firstMatch, named: "setup pacing label")
+        try requireElement(app.staticTexts["Timeout"].firstMatch, named: "setup timeout label")
+
+        let setupTimeoutPicker = try requireElement(
+            app.descendants(matching: .any)["Setup.engineDemoTimeoutPicker"].firstMatch,
+            named: "setup engine demo timeout picker"
+        )
+        try select("5s", from: setupTimeoutPicker, in: app)
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        try waitForGameBoardState(containing: "Mode: Engine vs Engine", in: app, named: "engine demo mode")
+        try waitForGameBoardState(containing: "Demo state: Play", in: app, named: "engine demo paused state")
+        try waitForGameBoardState(containing: "Timeout: 5s", in: app, named: "engine demo setup timeout")
+
+        try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoPlayPauseButton"].firstMatch,
+            named: "engine demo play button"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoStepButton"].firstMatch,
+            named: "engine demo step button"
+        )
+        try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoPacingPicker"].firstMatch,
+            named: "engine demo pacing picker"
+        )
+        let timeoutPicker = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoTimeoutPicker"].firstMatch,
+            named: "engine demo timeout picker"
+        )
+        XCTAssertEqual(timeoutPicker.value as? String, "5s")
+        try select("10s", from: timeoutPicker, in: app)
+        try waitForElementValue(timeoutPicker, expectedValue: "10s", named: "engine demo timeout picker")
+        try waitForGameBoardState(containing: "Timeout: 10s", in: app, named: "engine demo updated timeout")
+        XCTAssertFalse(app.descendants(matching: .any)["Game.enginePicker"].firstMatch.exists)
+    }
+
     func testGameCoordinateLabelsToggleUpdatesBoardState() throws {
         let app = XCUIApplication()
         app.launch()

@@ -58,7 +58,8 @@ final class ArasanMoveProviderIntegrationTests: XCTestCase {
                 fen: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
                 sideToMove: .white,
                 depth: 1,
-                multiPVCount: 1
+                multiPVCount: 1,
+                timeoutSeconds: 10
             )
         )
 
@@ -440,6 +441,7 @@ final class GameViewModelAnalysisRefreshTests: XCTestCase {
         XCTAssertEqual(harness.stockfish.requests.map(\.purpose), [.evaluation])
         XCTAssertEqual(harness.stockfish.requests.last?.depth, 8)
         XCTAssertEqual(harness.stockfish.requests.last?.multiPVCount, 1)
+        XCTAssertEqual(harness.stockfish.requests.last?.timeoutSeconds, EngineSearchRequest.defaultTimeoutSeconds)
         XCTAssertTrue(viewModel.boardModel.arrows.isEmpty)
     }
 
@@ -777,15 +779,361 @@ final class GameViewModelAnalysisRefreshTests: XCTestCase {
 }
 
 @MainActor
+final class GameViewModelEngineDemoTests: XCTestCase {
+    func testEngineDemoDefaultConfigurationUsesThirtySecondTimeout() {
+        let configuration = EngineDemoConfiguration.defaultConfiguration()
+
+        XCTAssertEqual(configuration.searchTimeout, .thirtySeconds)
+        XCTAssertEqual(configuration.searchTimeout.rawValue, EngineSearchRequest.defaultTimeoutSeconds)
+    }
+
+    func testEngineDemoBoardUsesInstantMoveFeedback() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+
+        XCTAssertEqual(viewModel.boardModel.moveAnimationDuration, GameViewModel.engineDemoMoveAnimationDuration)
+        XCTAssertEqual(viewModel.boardModel.moveAnimationDuration, 0)
+    }
+
+    func testHumanVsEngineBoardKeepsAnimatedMoveFeedback() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)
+
+        XCTAssertGreaterThan(viewModel.boardModel.moveAnimationDuration, 0)
+    }
+
+    func testEngineDemoStartsPausedWithoutRequestingSearch() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+
+        viewModel.startIfNeeded()
+
+        XCTAssertTrue(viewModel.isEngineDemoMode)
+        XCTAssertFalse(viewModel.showsEngineSelection)
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+    }
+
+    func testEngineDemoStepAppliesOneMoveAndRemainsPaused() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: 3),
+                black: EngineDemoSideConfiguration(engineKind: .arasan, depth: 4),
+                pacing: .fast,
+                searchTimeout: .fiveSeconds
+            )
+        )
+
+        viewModel.startIfNeeded()
+        viewModel.stepEngineDemo()
+
+        XCTAssertEqual(viewModel.engineDemoRunState, .stepping)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().purpose, .opponentMove)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().depth, 3)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .white)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().timeoutSeconds, 5)
+
+        harness.stockfish.emitBestMove("e2e4")
+
+        XCTAssertEqual(viewModel.moveRecords.count, 1)
+        XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .black)
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+    }
+
+    func testEngineDemoPlayAlternatesSideEnginesAndDepths() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: 2),
+                black: EngineDemoSideConfiguration(engineKind: .arasan, depth: 5),
+                pacing: .fast,
+                searchTimeout: .tenSeconds
+            )
+        )
+
+        viewModel.startIfNeeded()
+        viewModel.playEngineDemo()
+
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .white)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().depth, 2)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().timeoutSeconds, 10)
+
+        harness.stockfish.emitBestMove("e2e4")
+
+        XCTAssertEqual(harness.arasan.requireLastRequest().sideToMove, .black)
+        XCTAssertEqual(harness.arasan.requireLastRequest().depth, 5)
+        XCTAssertEqual(harness.arasan.requireLastRequest().timeoutSeconds, 10)
+
+        harness.arasan.emitBestMove("e7e5")
+
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .white)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().depth, 2)
+        XCTAssertEqual(viewModel.moveRecords.count, 2)
+        XCTAssertEqual(viewModel.engineDemoRunState, .playing)
+    }
+
+    func testEngineDemoTimeoutChangeAppliesToFutureSearchesOnly() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: 2),
+                black: EngineDemoSideConfiguration(engineKind: .arasan, depth: 5),
+                pacing: .fast,
+                searchTimeout: .fiveSeconds
+            )
+        )
+
+        viewModel.startIfNeeded()
+        viewModel.stepEngineDemo()
+
+        let firstRequest = harness.stockfish.requireLastRequest()
+        XCTAssertEqual(firstRequest.timeoutSeconds, 5)
+
+        viewModel.setEngineDemoSearchTimeout(.tenSeconds)
+        XCTAssertEqual(firstRequest.timeoutSeconds, 5)
+
+        harness.stockfish.emitBestMove("e2e4")
+        viewModel.stepEngineDemo()
+
+        XCTAssertEqual(harness.arasan.requireLastRequest().timeoutSeconds, 10)
+    }
+
+    func testEngineDemoPauseDuringSearchFinishesCurrentMoveWithoutStartingNextSearch() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: 2),
+                black: EngineDemoSideConfiguration(engineKind: .arasan, depth: 5),
+                pacing: .fast
+            )
+        )
+
+        viewModel.startIfNeeded()
+        viewModel.playEngineDemo()
+        viewModel.pauseEngineDemo()
+
+        XCTAssertEqual(viewModel.engineDemoRunState, .pausingAfterCurrentMove)
+
+        harness.stockfish.emitBestMove("e2e4")
+
+        XCTAssertEqual(viewModel.moveRecords.count, 1)
+        XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .black)
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+    }
+
+    func testEngineDemoAutoClaimsThreefoldRepetitionOnStart() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+        viewModel.boardModel.game = try Self.claimableThreefoldGame()
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .draw(.threefoldRepetition))
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        assertResultAlert(viewModel.activeAlert, title: "Draw by repetition", message: "Draw")
+    }
+
+    func testEngineDemoAutoClaimsFiftyMoveRuleOnStart() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+        viewModel.boardModel.game = try Self.game(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .draw(.fiftyMoveRule))
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        assertResultAlert(viewModel.activeAlert, title: "Draw by 50-move rule", message: "Draw")
+    }
+
+    func testEngineDemoPrefersThreefoldWhenMultipleDrawClaimsAreAvailable() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+        viewModel.boardModel.game = try Self.claimableThreefoldGame(halfmoveClock: 92)
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .draw(.threefoldRepetition))
+        assertResultAlert(viewModel.activeAlert, title: "Draw by repetition", message: "Draw")
+    }
+
+    func testHumanVsEngineDoesNotAutoClaimThreefoldRepetition() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)
+        let game = try Self.claimableThreefoldGame()
+        viewModel.boardModel.game = game
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .ongoing(drawClaims: [.threefoldRepetition]))
+        XCTAssertNil(viewModel.activeAlert)
+    }
+
+    func testHumanVsEngineDoesNotAutoClaimFiftyMoveRule() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)
+        viewModel.boardModel.game = try Self.game(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .ongoing(drawClaims: [.fiftyMoveRule]))
+        XCTAssertNil(viewModel.activeAlert)
+    }
+
+    func testEngineDemoPausedConfigurationChangeAppliesToNextStep() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+
+        viewModel.startIfNeeded()
+        viewModel.setEngineDemoEngineKind(.arasan, for: .white)
+        viewModel.setEngineDemoDepth(12, for: .white)
+        viewModel.stepEngineDemo()
+
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        XCTAssertEqual(harness.arasan.requireLastRequest().sideToMove, .white)
+        XCTAssertEqual(harness.arasan.requireLastRequest().depth, 12)
+    }
+
+    func testEngineDemoStressModeRandomizesBeforeEachSearchAcrossTenPly() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: EngineDemoSideConfiguration(engineKind: .stockfish, depth: 8),
+                black: EngineDemoSideConfiguration(engineKind: .arasan, depth: 8),
+                pacing: .fast,
+                stress: EngineDemoStressConfiguration(
+                    isEnabled: true,
+                    randomizesEngineEachMove: true,
+                    randomizesDepthEachMove: true,
+                    minimumDepth: 1,
+                    maximumDepth: 3,
+                    seed: 42
+                )
+            )
+        )
+        let moves = [
+            "e2e4", "e7e5",
+            "g1f3", "b8c6",
+            "f1c4", "g8f6",
+            "d2d3", "f8c5",
+            "c2c3", "d7d6",
+        ]
+        var chosenEngines: Set<DemoEngineKind> = []
+        var chosenDepths: [Int] = []
+
+        viewModel.startIfNeeded()
+        viewModel.playEngineDemo()
+
+        for (index, move) in moves.enumerated() {
+            let moveConfiguration = try! XCTUnwrap(viewModel.engineDemoLastMoveConfiguration)
+            let provider = harness.provider(for: moveConfiguration.engineKind)
+            let request = provider.requireLastRequest()
+
+            chosenEngines.insert(moveConfiguration.engineKind)
+            chosenDepths.append(moveConfiguration.depth)
+            XCTAssertEqual(moveConfiguration.side, index.isMultiple(of: 2) ? .white : .black)
+            XCTAssertEqual(request.sideToMove, moveConfiguration.side)
+            XCTAssertEqual(request.depth, moveConfiguration.depth)
+            XCTAssertTrue((1...3).contains(moveConfiguration.depth))
+
+            provider.emitBestMove(move)
+        }
+
+        XCTAssertEqual(viewModel.moveRecords.count, 10)
+        XCTAssertEqual(viewModel.boardModel.game.position.state.turn, .white)
+        XCTAssertEqual(chosenEngines, Set(DemoEngineKind.allCases))
+        XCTAssertTrue(chosenDepths.contains(1))
+        XCTAssertTrue(chosenDepths.contains(2) || chosenDepths.contains(3))
+    }
+
+    private static func claimableThreefoldGame(halfmoveClock: Int = 0) throws -> Game {
+        let game = try game(from: "8/8/8/8/8/6k1/8/R3K3 w - - \(halfmoveClock) 1")
+        try applyQuietKingCycle(to: game)
+        try applyQuietKingCycle(to: game)
+        XCTAssertTrue(game.drawClaims.contains(.threefoldRepetition))
+        return game
+    }
+
+    private static func game(from fen: String) throws -> Game {
+        Game(position: try FENSerializer().position(from: fen))
+    }
+
+    private static func applyQuietKingCycle(to game: Game) throws {
+        try applyLegalCoordinates(["e1d1", "g3f3", "d1e1", "f3g3"], to: game)
+    }
+
+    private static func applyLegalCoordinates(_ coordinates: [String], to game: Game) throws {
+        for coordinate in coordinates {
+            try game.applyLegal(move: Move(string: coordinate))
+        }
+    }
+}
+
+@MainActor
+final class EngineProviderTimeoutTests: XCTestCase {
+    func testEngineSearchRequestDefaultsToThirtySecondTimeout() {
+        let request = EngineSearchRequest(
+            engineKind: .stockfish,
+            purpose: .evaluation,
+            fen: "8/8/8/8/8/8/8/8 w - - 0 1",
+            sideToMove: .white,
+            depth: 1,
+            multiPVCount: 1
+        )
+
+        XCTAssertEqual(request.timeoutSeconds, 30)
+        XCTAssertEqual(StockfishMoveProvider.timeoutSeconds(for: request), 30)
+        XCTAssertEqual(ArasanMoveProvider.timeoutSeconds(for: request), 30)
+    }
+
+    func testEngineSearchRequestClampsNonPositiveTimeouts() {
+        let request = EngineSearchRequest(
+            engineKind: .stockfish,
+            purpose: .evaluation,
+            fen: "8/8/8/8/8/8/8/8 w - - 0 1",
+            sideToMove: .white,
+            depth: 1,
+            multiPVCount: 1,
+            timeoutSeconds: 0
+        )
+
+        XCTAssertEqual(request.timeoutSeconds, 1)
+        XCTAssertEqual(StockfishMoveProvider.timeoutSeconds(for: request), 1)
+        XCTAssertEqual(ArasanMoveProvider.timeoutSeconds(for: request), 1)
+    }
+
+    func testProviderTimeoutHelpersUseDefaultWhenNoRequestIsActive() {
+        XCTAssertEqual(StockfishMoveProvider.timeoutSeconds(for: nil), EngineSearchRequest.defaultTimeoutSeconds)
+        XCTAssertEqual(ArasanMoveProvider.timeoutSeconds(for: nil), EngineSearchRequest.defaultTimeoutSeconds)
+    }
+}
+
+@MainActor
 private final class EngineAnalysisHarness {
     let stockfish = RecordingEngineProvider(engineKind: .stockfish)
     let arasan = RecordingEngineProvider(engineKind: .arasan)
 
-    func makeViewModel(minimumEngineThinkingSeconds: TimeInterval = 0) -> GameViewModel {
+    func makeViewModel(
+        gameMode: DemoGameMode = .humanVsEngine,
+        engineDemoConfiguration: EngineDemoConfiguration = .defaultConfiguration(),
+        minimumEngineThinkingSeconds: TimeInterval = 0
+    ) -> GameViewModel {
         GameViewModel(
             playerColor: .white,
             pieceSet: .artDecoMonochrome,
             boardTheme: .classicGreen,
+            gameMode: gameMode,
+            engineDemoConfiguration: engineDemoConfiguration,
             minimumEngineThinkingSeconds: minimumEngineThinkingSeconds,
             stockfishProviderFactory: { [stockfish] eventHandler in
                 stockfish.eventHandler = eventHandler
@@ -918,12 +1266,29 @@ private final class RecordingEngineProvider: DemoEngineProvider {
                 fen: "",
                 sideToMove: .white,
                 depth: 1,
-                multiPVCount: 1
+                multiPVCount: 1,
+                timeoutSeconds: EngineSearchRequest.defaultTimeoutSeconds
             )
         }
 
         return request
     }
+}
+
+private func assertResultAlert(
+    _ alert: GameViewModel.GameAlert?,
+    title: String,
+    message: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) {
+    guard case .result(let result) = alert else {
+        XCTFail("Expected result alert, got \(String(describing: alert))", file: file, line: line)
+        return
+    }
+
+    XCTAssertEqual(result.title, title, file: file, line: line)
+    XCTAssertEqual(result.message, message, file: file, line: line)
 }
 
 private struct ScenarioExpectation {

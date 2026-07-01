@@ -35,6 +35,8 @@ struct GameView: View {
         playerColor: PieceColor,
         pieceSet: ChessPieceSet,
         boardTheme: ChessBoardTheme,
+        gameMode: DemoGameMode = .humanVsEngine,
+        engineDemoConfiguration: EngineDemoConfiguration = .defaultConfiguration(),
         scenario: GameScenario? = nil
     ) {
         _viewModel = StateObject(
@@ -42,6 +44,8 @@ struct GameView: View {
                 playerColor: playerColor,
                 pieceSet: pieceSet,
                 boardTheme: boardTheme,
+                gameMode: gameMode,
+                engineDemoConfiguration: engineDemoConfiguration,
                 scenario: scenario
             )
         )
@@ -264,16 +268,38 @@ struct GameView: View {
         return "Pieces: \(viewModel.pieceSet.displayName), "
             + "Board: \(viewModel.boardTheme.displayName), "
             + "Coordinates: \(coordinateState), "
+            + "Mode: \(viewModel.gameMode.displayName), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Depth: \(viewModel.engineDepth), "
             + "Engine: \(viewModel.selectedEngineKind.displayName), "
             + "Engine status: \(viewModel.engineActivity.accessibilityValue), "
+            + engineDemoAccessibilityValue
             + viewModel.scenarioAccessibilityValue
             + "FEN: \(viewModel.positionFEN)"
     }
 
+    private var engineDemoAccessibilityValue: String {
+        guard viewModel.isEngineDemoMode else { return "" }
+
+        return "Demo state: \(viewModel.engineDemoPrimaryControlTitle), "
+            + "White engine: \(viewModel.engineDemoConfiguration.white.engineKind.displayName), "
+            + "White depth: \(viewModel.engineDemoConfiguration.white.depth), "
+            + "Black engine: \(viewModel.engineDemoConfiguration.black.engineKind.displayName), "
+            + "Black depth: \(viewModel.engineDemoConfiguration.black.depth), "
+            + "Pacing: \(viewModel.engineDemoConfiguration.pacing.displayName), "
+            + "Timeout: \(viewModel.engineDemoConfiguration.searchTimeout.displayName), "
+    }
+
+    private func engineDemoSideConfiguration(for color: PieceColor) -> EngineDemoSideConfiguration {
+        viewModel.engineDemoConfiguration.sideConfiguration(for: color)
+    }
+
     private var referencePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if viewModel.isEngineDemoMode {
+                engineDemoControlsSection
+            }
+
             displayOptionsSection
 
             if horizontalSizeClass == .regular, viewModel.showsMoveList {
@@ -298,13 +324,17 @@ struct GameView: View {
                 VStack(spacing: 10) {
                     pieceSetControl
                     boardThemeControl
-                    suggestionArrowsControl
-                    engineSelectionControl
+                    if !viewModel.isEngineDemoMode {
+                        suggestionArrowsControl
+                        engineSelectionControl
+                    }
                     coordinateLabelsToggle
                     gameStatusToggle
                     moveListToggle
                     evaluationBarToggle
-                    engineDepthControl
+                    if !viewModel.isEngineDemoMode {
+                        engineDepthControl
+                    }
                 }
             } else {
                 compactDisplayOptions
@@ -319,9 +349,11 @@ struct GameView: View {
                 boardThemeControl
             }
 
-            suggestionArrowsControl
+            if !viewModel.isEngineDemoMode {
+                suggestionArrowsControl
 
-            engineSelectionControl
+                engineSelectionControl
+            }
 
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
@@ -335,7 +367,215 @@ struct GameView: View {
                 }
             }
 
-            engineDepthControl
+            if !viewModel.isEngineDemoMode {
+                engineDepthControl
+            }
+        }
+    }
+
+    private var engineDemoControlsSection: some View {
+        panelSection("Engine Demo") {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Button {
+                        viewModel.toggleEngineDemoPlayback()
+                    } label: {
+                        Label(
+                            viewModel.engineDemoPrimaryControlTitle,
+                            systemImage: engineDemoPrimaryControlSystemImage
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(engineDemoPrimaryControlIsDisabled)
+                    .accessibilityIdentifier("Game.engineDemoPlayPauseButton")
+
+                    Button {
+                        viewModel.stepEngineDemo()
+                    } label: {
+                        Label("Step", systemImage: "forward.end")
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!viewModel.canStepEngineDemo)
+                    .accessibilityIdentifier("Game.engineDemoStepButton")
+                }
+
+                engineDemoPacingControl
+                engineDemoTimeoutControl
+                engineDemoSideControl(title: "White", color: .white)
+                engineDemoSideControl(title: "Black", color: .black)
+                engineDemoStressControls
+            }
+        }
+    }
+
+    private var engineDemoPacingControl: some View {
+        Menu {
+            ForEach(EngineDemoPacing.allCases) { pacing in
+                Button(pacing.displayName) {
+                    viewModel.setEngineDemoPacing(pacing)
+                }
+                .disabled(pacing == viewModel.engineDemoConfiguration.pacing)
+            }
+        } label: {
+            displayControlLabel(
+                title: "Pacing",
+                value: viewModel.engineDemoConfiguration.pacing.displayName,
+                systemImage: "timer"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.engineDemoPacingPicker")
+        .accessibilityValue(viewModel.engineDemoConfiguration.pacing.displayName)
+    }
+
+    private var engineDemoTimeoutControl: some View {
+        Menu {
+            ForEach(EngineDemoSearchTimeout.allCases) { timeout in
+                Button(timeout.displayName) {
+                    viewModel.setEngineDemoSearchTimeout(timeout)
+                }
+                .disabled(timeout == viewModel.engineDemoConfiguration.searchTimeout)
+            }
+        } label: {
+            displayControlLabel(
+                title: "Timeout",
+                value: viewModel.engineDemoConfiguration.searchTimeout.displayName,
+                systemImage: "hourglass"
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.engineDemoTimeoutPicker")
+        .accessibilityValue(viewModel.engineDemoConfiguration.searchTimeout.displayName)
+    }
+
+    private func engineDemoSideControl(title: String, color: PieceColor) -> some View {
+        VStack(spacing: 8) {
+            Menu {
+                ForEach(DemoEngineKind.allCases) { engineKind in
+                    Button(engineKind.displayName) {
+                        viewModel.setEngineDemoEngineKind(engineKind, for: color)
+                    }
+                    .disabled(engineKind == engineDemoSideConfiguration(for: color).engineKind)
+                }
+            } label: {
+                displayControlLabel(
+                    title: "\(title) Engine",
+                    value: engineDemoSideConfiguration(for: color).engineKind.displayName,
+                    systemImage: "cpu"
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("Game.engineDemo\(title)EnginePicker")
+            .accessibilityValue(engineDemoSideConfiguration(for: color).engineKind.displayName)
+
+            Stepper(
+                value: Binding(
+                    get: { engineDemoSideConfiguration(for: color).depth },
+                    set: { viewModel.setEngineDemoDepth($0, for: color) }
+                ),
+                in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
+            ) {
+                displayControlLabel(
+                    title: "\(title) Depth",
+                    value: "\(engineDemoSideConfiguration(for: color).depth)",
+                    systemImage: "speedometer"
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("Game.engineDemo\(title)DepthStepper")
+            .accessibilityValue("\(engineDemoSideConfiguration(for: color).depth)")
+        }
+    }
+
+    private var engineDemoStressControls: some View {
+        VStack(spacing: 8) {
+            displayToggleRow(
+                title: "Stress mode",
+                systemImage: "shuffle",
+                isOn: viewModel.engineDemoConfiguration.stress.isEnabled,
+                accessibilityIdentifier: "Game.engineDemoStressToggle"
+            ) {
+                viewModel.setEngineDemoStressEnabled(!viewModel.engineDemoConfiguration.stress.isEnabled)
+            }
+
+            if viewModel.engineDemoConfiguration.stress.isEnabled {
+                displayToggleRow(
+                    title: "Random engines",
+                    systemImage: "cpu",
+                    isOn: viewModel.engineDemoConfiguration.stress.randomizesEngineEachMove,
+                    accessibilityIdentifier: "Game.engineDemoRandomEnginesToggle"
+                ) {
+                    viewModel.setEngineDemoRandomizesEngineEachMove(
+                        !viewModel.engineDemoConfiguration.stress.randomizesEngineEachMove
+                    )
+                }
+
+                displayToggleRow(
+                    title: "Random depths",
+                    systemImage: "speedometer",
+                    isOn: viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove,
+                    accessibilityIdentifier: "Game.engineDemoRandomDepthsToggle"
+                ) {
+                    viewModel.setEngineDemoRandomizesDepthEachMove(
+                        !viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove
+                    )
+                }
+
+                if viewModel.engineDemoConfiguration.stress.randomizesDepthEachMove {
+                    engineDemoStressDepthControl(title: "Minimum", isMinimum: true)
+                    engineDemoStressDepthControl(title: "Maximum", isMinimum: false)
+                }
+            }
+        }
+    }
+
+    private func engineDemoStressDepthControl(title: String, isMinimum: Bool) -> some View {
+        Stepper(
+            value: Binding(
+                get: {
+                    isMinimum
+                        ? viewModel.engineDemoConfiguration.stress.minimumDepth
+                        : viewModel.engineDemoConfiguration.stress.maximumDepth
+                },
+                set: { depth in
+                    if isMinimum {
+                        viewModel.setEngineDemoStressMinimumDepth(depth)
+                    } else {
+                        viewModel.setEngineDemoStressMaximumDepth(depth)
+                    }
+                }
+            ),
+            in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
+        ) {
+            displayControlLabel(
+                title: "\(title) Depth",
+                value: "\(isMinimum ? viewModel.engineDemoConfiguration.stress.minimumDepth : viewModel.engineDemoConfiguration.stress.maximumDepth)",
+                systemImage: "slider.horizontal.3"
+            )
+        }
+        .accessibilityIdentifier("Game.engineDemoStress\(title)DepthStepper")
+    }
+
+    private var engineDemoPrimaryControlSystemImage: String {
+        switch viewModel.engineDemoRunState {
+        case .playing, .stepping, .pausingAfterCurrentMove:
+            return "pause.fill"
+        case .paused:
+            return "play.fill"
+        }
+    }
+
+    private var engineDemoPrimaryControlIsDisabled: Bool {
+        switch viewModel.engineDemoRunState {
+        case .stepping, .pausingAfterCurrentMove:
+            return true
+        case .paused, .playing:
+            return !viewModel.isGameOngoing
         }
     }
 

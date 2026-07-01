@@ -117,6 +117,22 @@ Data flow at a glance:
   suggestion-count picker. ChessUI renders the arrows but does not decide which
   moves to suggest.
 - The engine returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
+- Engine-vs-engine mode starts paused, lets the user choose White and Black
+  engines and depths independently, and uses Play/Pause or Step controls to
+  apply engine moves through the same ChessCore move-application path as normal
+  gameplay.
+- Engine-vs-engine mode also lets the user choose an app-side safety timeout
+  for each search. The timeout is not UCI `movetime`; the app still starts a
+  depth search, then sends `stop` if the selected engine has not returned within
+  the selected timeout and applies the best move reported so far when possible.
+- Engine-vs-engine mode automatically claims ChessCore draw claims such as
+  threefold repetition and the 50-move rule. Human-vs-engine games leave those
+  claimable draws available to the player instead of ending automatically.
+- Engine-vs-engine stress mode can randomize the engine and/or depth before
+  each move within a configured range. Randomization happens before a search
+  starts, never while an engine request is in flight, so the mode is useful for
+  exercising engine switching and timeout boundaries without changing the
+  normal human-vs-engine game.
 - Scenario replay uses a named JSON scenario plus a bundled PGN fixture. The
   PGN is parsed through `ChessCore.PGNSerializer`, concrete moves are held in
   memory, and the same move-application path updates the board, move list, and
@@ -139,17 +155,24 @@ Reference-app boundaries:
   SwiftChessTools public API.
 
 Key files to read:
-- `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the human side.
+- `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the game
+  mode, human side, or initial engine-vs-engine settings.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme,
   engine-selection, and coordinate-label switching during play, visible ChessUI
   status and move-list components, status-row engine activity and timeout
   notices, optional evaluation-bar display, in-game engine-depth control,
-  selectable move-suggestion arrows, compact horizontal move-list layout on
-  iPhone, and navigation flow.
+  selectable move-suggestion arrows, engine-vs-engine playback controls,
+  engine-vs-engine safety timeout selection, compact horizontal move-list layout
+  on iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
   fallback, evaluation normalization, selected-engine MultiPV suggestion
-  mapping, and ChessCore game-status integration.
+  mapping, engine-vs-engine loop control, automatic draw-claim policy for
+  engine-vs-engine games, stress-mode randomization, and ChessCore game-status
+  integration.
+- `SwiftChessDemo/EngineDemoConfiguration.swift`: value types that describe
+  engine-vs-engine mode, per-side engine/depth settings, pacing, search safety
+  timeout, and optional deterministic stress randomization.
 - `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
   serialized search requests, UCI command formatting/parsing, timeout `stop`
   handling, and cancelled suggestion-output handling.
@@ -167,12 +190,14 @@ Key files to read:
 - `SwiftChessDemo/Scenarios/`: checked-in scenario index, authoring guide, JSON
   definitions, and PGN fixtures.
 - `SwiftChessDemoTests/GameScenarioUnitTests.swift`: fast unit coverage for
-  scenario loading, index validation, and deterministic move-provider behavior.
+  scenario loading, index validation, deterministic move-provider behavior,
+  live-analysis refreshes, and engine-vs-engine playback/stress behavior.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
   live-engine selection, status, move-list, evaluation display options,
-  selectable suggestion arrows, scenario replay, and four-full-move game flows
-  from both white and black perspectives.
+  selectable suggestion arrows, engine-vs-engine setup/control rendering,
+  scenario replay, and four-full-move game flows from both white and black
+  perspectives.
 
 Automated tests:
 - Run the suite from this repo root:
@@ -208,6 +233,13 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
   `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` to reduce the visible
   thinking pause. Normal app launches do not set these flags and default to
   Stockfish unless the player selects Arasan from the game screen.
+- Engine-vs-engine unit tests use fake engine providers to verify that Play,
+  Pause, Step, per-side engine/depth settings, request timeouts, automatic
+  draw-claim policy, and seeded stress randomization behave deterministically
+  without starting live engine processes.
+- Engine-vs-engine UI coverage verifies that the setup mode launches into a
+  paused game with demo-only playback controls and timeout selection visible,
+  and the normal live-game engine picker hidden.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live engine analysis.

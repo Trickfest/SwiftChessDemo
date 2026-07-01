@@ -164,15 +164,21 @@ final class ArasanMoveProvider: DemoEngineProvider {
     }
 
     private func startTimeout(token: UUID) {
+        let timeoutSeconds = Self.timeoutSeconds(for: activeRequest)
         timeoutTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(30))
+                try await Task.sleep(for: .seconds(timeoutSeconds))
             } catch {
                 return
             }
 
             self?.handleTimeout(token: token)
         }
+    }
+
+    /// Returns the app-side safety timeout for a search request.
+    static func timeoutSeconds(for request: EngineSearchRequest?) -> Int {
+        request?.timeoutSeconds ?? EngineSearchRequest.defaultTimeoutSeconds
     }
 
     private func handleTimeout(token: UUID) {

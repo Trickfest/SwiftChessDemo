@@ -50,12 +50,33 @@ enum EngineSearchPurpose: Equatable, Sendable {
 
 /// One engine request against one board position.
 struct EngineSearchRequest: Equatable, Sendable {
+    static let defaultTimeoutSeconds = 30
+
     let engineKind: DemoEngineKind
     let purpose: EngineSearchPurpose
     let fen: String
     let sideToMove: PieceColor
     let depth: Int
     let multiPVCount: Int
+    let timeoutSeconds: Int
+
+    init(
+        engineKind: DemoEngineKind,
+        purpose: EngineSearchPurpose,
+        fen: String,
+        sideToMove: PieceColor,
+        depth: Int,
+        multiPVCount: Int,
+        timeoutSeconds: Int = defaultTimeoutSeconds
+    ) {
+        self.engineKind = engineKind
+        self.purpose = purpose
+        self.fen = fen
+        self.sideToMove = sideToMove
+        self.depth = depth
+        self.multiPVCount = multiPVCount
+        self.timeoutSeconds = max(1, timeoutSeconds)
+    }
 }
 
 /// Typed output from a live engine provider.

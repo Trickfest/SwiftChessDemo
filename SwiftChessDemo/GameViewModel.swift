@@ -125,9 +125,17 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var positionFEN: String
     /// Current engine activity or recoverable engine status notice.
     @Published private(set) var engineActivity: EngineActivityState = .idle
+    /// Engine-vs-engine settings used only by demo mode.
+    @Published private(set) var engineDemoConfiguration: EngineDemoConfiguration
+    /// Playback state for engine-vs-engine demo mode.
+    @Published private(set) var engineDemoRunState: EngineDemoRunState = .paused
+    /// Engine/depth selected for the most recent engine-vs-engine move request.
+    @Published private(set) var engineDemoLastMoveConfiguration: EngineDemoMoveConfiguration?
 
     /// The human player's color; used to gate whose turn it is.
     let playerColor: PieceColor
+    /// Whether the game is user-driven or engine-vs-engine.
+    let gameMode: DemoGameMode
     /// ChessUI model that binds to the board UI.
     let boardModel: ChessBoardModel
 
@@ -145,6 +153,8 @@ final class GameViewModel: ObservableObject {
     private var engineActivityClearWorkItem: DispatchWorkItem?
     /// Work item used to advance automatic scenario replay.
     private var scenarioReplayWorkItem: DispatchWorkItem?
+    /// Work item used to pace engine-vs-engine auto-play after a move has landed.
+    private var engineDemoPacingWorkItem: DispatchWorkItem?
     /// Latest first move for each one-based MultiPV rank.
     private var suggestedMovesByRank: [Int: Move] = [:]
     /// FEN for the cached suggestion ranks.
@@ -175,11 +185,17 @@ final class GameViewModel: ObservableObject {
     private var opponentSearchTimedOut = false
     /// Latest legal first move from the current opponent search's principal variation.
     private var latestOpponentPrincipalVariationMove: Move?
+    /// Exact active move-producing request, used to reject stale cross-engine events.
+    private var activeOpponentSearchRequest: EngineSearchRequest?
+    /// Seeded generator used by deterministic engine-vs-engine stress mode.
+    private var engineDemoRandomGenerator: SeededRandomGenerator
 
     init(
         playerColor: PieceColor,
         pieceSet: ChessPieceSet,
         boardTheme: ChessBoardTheme,
+        gameMode: DemoGameMode = .humanVsEngine,
+        engineDemoConfiguration: EngineDemoConfiguration = .defaultConfiguration(),
         scenario: GameScenario? = nil,
         minimumEngineThinkingSeconds: TimeInterval? = nil,
         scenarioReplayDelaySeconds: TimeInterval? = nil,
@@ -189,6 +205,12 @@ final class GameViewModel: ObservableObject {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
         self.scenario = scenario
+        self.gameMode = scenario == nil ? gameMode : .humanVsEngine
+        let normalizedEngineDemoConfiguration = engineDemoConfiguration.normalized()
+        self.engineDemoConfiguration = normalizedEngineDemoConfiguration
+        self.engineDemoRandomGenerator = SeededRandomGenerator(
+            seed: normalizedEngineDemoConfiguration.stress.seed
+        )
         if let scenario {
             self.moveProvider = ScenarioReplayMoveProvider(scenario: scenario)
         } else {
@@ -229,9 +251,12 @@ final class GameViewModel: ObservableObject {
             boardTheme: boardTheme,
             pieceSet: pieceSet
         )
+        if self.gameMode == .engineVsEngine {
+            self.boardModel.moveAnimationDuration = Self.engineDemoMoveAnimationDuration
+        }
         // Let ChessUI report only legal moves for the side to move; the view
         // model still gates those moves to the human player's turn.
-        self.boardModel.interactionMode = self.moveProvider?.isAutomaticReplay == true
+        self.boardModel.interactionMode = self.moveProvider?.isAutomaticReplay == true || self.gameMode == .engineVsEngine
             ? .readOnly
             : .legalMovesOnly
         self.boardModel.game = initialGame
@@ -272,6 +297,10 @@ final class GameViewModel: ObservableObject {
 
         return max(delay, 0)
     }
+
+    /// Engine-vs-engine mode can start a CPU-heavy search immediately after a
+    /// move. Keeping board moves instantaneous avoids stale travel overlays.
+    static let engineDemoMoveAnimationDuration: Double = 0
 
     /// Lowest engine search depth exposed by the game screen.
     static let minimumEngineDepth = 1
@@ -372,7 +401,12 @@ final class GameViewModel: ObservableObject {
 
     /// Live provider for the currently selected embedded engine.
     private var selectedEngineProvider: any DemoEngineProvider {
-        switch selectedEngineKind {
+        provider(for: selectedEngineKind)
+    }
+
+    /// Live provider for an explicit embedded engine.
+    private func provider(for engineKind: DemoEngineKind) -> any DemoEngineProvider {
+        switch engineKind {
         case .stockfish:
             return stockfishProvider
         case .arasan:
@@ -380,9 +414,14 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Whether the current game is an engine-vs-engine demo run.
+    var isEngineDemoMode: Bool {
+        gameMode == .engineVsEngine && moveProvider == nil
+    }
+
     /// Engine selection is only meaningful for live games, not deterministic scenarios.
     var showsEngineSelection: Bool {
-        moveProvider == nil
+        moveProvider == nil && !isEngineDemoMode
     }
 
     /// Engine switching is safe during display-only analysis, but not while an opponent move is pending.
@@ -390,6 +429,40 @@ final class GameViewModel: ObservableObject {
         showsEngineSelection
             && selectedEngineProvider.activePurpose != .opponentMove
             && pendingEngineMoveWorkItem == nil
+    }
+
+    /// Engine-vs-engine controls are enabled when no search, delayed move, or pacing timer is active.
+    var canStepEngineDemo: Bool {
+        isEngineDemoMode
+            && engineDemoRunState == .paused
+            && !hasActiveEngineDemoWork
+            && isGameOngoing
+    }
+
+    /// Whether the current ChessCore status is still playable.
+    var isGameOngoing: Bool {
+        Self.isOngoing(gameStatus)
+    }
+
+    /// Primary demo-control title derived from the playback state.
+    var engineDemoPrimaryControlTitle: String {
+        switch engineDemoRunState {
+        case .playing:
+            return "Pause"
+        case .pausingAfterCurrentMove:
+            return "Pausing"
+        case .stepping:
+            return "Stepping"
+        case .paused:
+            return "Play"
+        }
+    }
+
+    /// Whether the demo has an in-flight move search, delayed move application, or pacing timer.
+    private var hasActiveEngineDemoWork: Bool {
+        activeOpponentSearchRequest != nil
+            || pendingEngineMoveWorkItem != nil
+            || engineDemoPacingWorkItem != nil
     }
 
     /// Test-only controls are opt-in through the UI test launch environment.
@@ -460,6 +533,11 @@ final class GameViewModel: ObservableObject {
 
         engineDepth = clampedDepth
 
+        if isEngineDemoMode {
+            setEngineDemoDepth(clampedDepth, for: boardModel.game.position.state.turn)
+            return
+        }
+
         if boardModel.game.position.state.turn == playerColor.opposite {
             if moveProvider == nil,
                selectedEngineProvider.activePurpose == nil,
@@ -495,6 +573,152 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Toggles continuous engine-vs-engine playback.
+    func toggleEngineDemoPlayback() {
+        switch engineDemoRunState {
+        case .playing, .stepping, .pausingAfterCurrentMove:
+            pauseEngineDemo()
+        case .paused:
+            playEngineDemo()
+        }
+    }
+
+    /// Starts continuous engine-vs-engine playback from the current position.
+    func playEngineDemo() {
+        guard isEngineDemoMode, isGameOngoing else { return }
+
+        engineDemoRunState = .playing
+        guard !hasActiveEngineDemoWork else { return }
+        scheduleEngineMove()
+    }
+
+    /// Pauses engine-vs-engine playback after the current in-flight move, if any.
+    func pauseEngineDemo() {
+        guard isEngineDemoMode else { return }
+
+        if let engineDemoPacingWorkItem {
+            engineDemoPacingWorkItem.cancel()
+            self.engineDemoPacingWorkItem = nil
+            engineDemoRunState = .paused
+            setEngineActivity(.idle)
+            return
+        }
+
+        if activeOpponentSearchRequest != nil || pendingEngineMoveWorkItem != nil {
+            engineDemoRunState = .pausingAfterCurrentMove
+        } else {
+            engineDemoRunState = .paused
+            setEngineActivity(.idle)
+        }
+    }
+
+    /// Applies exactly one engine-vs-engine move and then returns to paused state.
+    func stepEngineDemo() {
+        guard canStepEngineDemo else { return }
+
+        engineDemoRunState = .stepping
+        scheduleEngineMove()
+    }
+
+    /// Updates the engine-vs-engine pacing used after future moves are applied.
+    func setEngineDemoPacing(_ pacing: EngineDemoPacing) {
+        guard isEngineDemoMode, pacing != engineDemoConfiguration.pacing else { return }
+
+        updateEngineDemoConfiguration { configuration in
+            configuration.pacing = pacing
+        }
+
+        if engineDemoRunState == .playing, engineDemoPacingWorkItem != nil {
+            engineDemoPacingWorkItem?.cancel()
+            engineDemoPacingWorkItem = nil
+            scheduleNextEngineDemoMoveAfterPacing()
+        }
+    }
+
+    /// Updates the app-side safety timeout used by future engine-vs-engine searches.
+    func setEngineDemoSearchTimeout(_ searchTimeout: EngineDemoSearchTimeout) {
+        guard isEngineDemoMode, searchTimeout != engineDemoConfiguration.searchTimeout else { return }
+
+        updateEngineDemoConfiguration { configuration in
+            configuration.searchTimeout = searchTimeout
+        }
+    }
+
+    /// Updates the configured engine for one demo side.
+    func setEngineDemoEngineKind(_ engineKind: DemoEngineKind, for side: PieceColor) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration { configuration in
+            switch side {
+            case .white:
+                configuration.white.engineKind = engineKind
+            case .black:
+                configuration.black.engineKind = engineKind
+            }
+        }
+        syncSelectedEngineToCurrentEngineDemoSideIfIdle()
+    }
+
+    /// Updates the configured depth for one demo side.
+    func setEngineDemoDepth(_ depth: Int, for side: PieceColor) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration { configuration in
+            switch side {
+            case .white:
+                configuration.white.depth = EngineDemoConfiguration.clampedDepth(depth)
+            case .black:
+                configuration.black.depth = EngineDemoConfiguration.clampedDepth(depth)
+            }
+        }
+        syncSelectedEngineToCurrentEngineDemoSideIfIdle()
+    }
+
+    /// Enables or disables engine-vs-engine stress randomization.
+    func setEngineDemoStressEnabled(_ isEnabled: Bool) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
+            configuration.stress.isEnabled = isEnabled
+        }
+    }
+
+    /// Enables or disables per-move engine randomization for stress mode.
+    func setEngineDemoRandomizesEngineEachMove(_ randomizesEngineEachMove: Bool) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
+            configuration.stress.randomizesEngineEachMove = randomizesEngineEachMove
+        }
+    }
+
+    /// Enables or disables per-move depth randomization for stress mode.
+    func setEngineDemoRandomizesDepthEachMove(_ randomizesDepthEachMove: Bool) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
+            configuration.stress.randomizesDepthEachMove = randomizesDepthEachMove
+        }
+    }
+
+    /// Updates the minimum depth used by stress mode.
+    func setEngineDemoStressMinimumDepth(_ depth: Int) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
+            configuration.stress.minimumDepth = depth
+        }
+    }
+
+    /// Updates the maximum depth used by stress mode.
+    func setEngineDemoStressMaximumDepth(_ depth: Int) {
+        guard isEngineDemoMode else { return }
+
+        updateEngineDemoConfiguration(resetRandomGenerator: true) { configuration in
+            configuration.stress.maximumDepth = depth
+        }
+    }
+
     /// Selects a move-list record without changing the board position.
     func selectMoveRecord(_ record: ChessMoveRecord) {
         selectedMovePly = record.ply
@@ -505,6 +729,12 @@ final class GameViewModel: ObservableObject {
         // Guard so repeated `onAppear` calls do not restart the engine.
         guard !didStart else { return }
         didStart = true
+        if isEngineDemoMode {
+            boardModel.clearArrows()
+            syncSelectedEngineToCurrentEngineDemoSideIfIdle()
+            _ = checkForGameEnd()
+            return
+        }
         if moveProvider?.isAutomaticReplay == true {
             startAutomaticReplay()
             return
@@ -521,6 +751,7 @@ final class GameViewModel: ObservableObject {
 
     /// Receives a move from ChessUI when the user interacts with the UI.
     func handleUserMove(move: Move, isLegal: Bool) {
+        guard !isEngineDemoMode else { return }
         guard moveProvider?.isAutomaticReplay != true else { return }
         // Ignore illegal gestures, and ignore moves when it's not the user's turn.
         guard isLegal else { return }
@@ -674,18 +905,48 @@ final class GameViewModel: ObservableObject {
 
     /// Requests a selected-engine reply for the current position.
     private func requestEngineMove() {
+        if isEngineDemoMode {
+            requestEngineDemoMove()
+            return
+        }
+
         // Only search when it is the engine's turn.
         guard boardModel.game.position.state.turn == playerColor.opposite else { return }
 
         boardModel.clearArrows()
-        beginOpponentSearch()
 
         if let moveProvider {
+            beginOpponentSearch(engineKind: selectedEngineKind, depth: engineDepth, request: nil)
             applyMoveProviderOpponentMove(moveProvider)
             return
         }
 
-        selectedEngineProvider.startOrQueueSearch(engineSearchRequest(purpose: .opponentMove))
+        let request = engineSearchRequest(purpose: .opponentMove)
+        beginOpponentSearch(engineKind: request.engineKind, depth: request.depth, request: request)
+        selectedEngineProvider.startOrQueueSearch(request)
+    }
+
+    /// Requests the next engine-vs-engine move for the side to move.
+    private func requestEngineDemoMove() {
+        guard isEngineDemoMode, Self.isOngoing(boardModel.game.status) else { return }
+
+        let moveConfiguration = nextEngineDemoMoveConfiguration()
+        engineDemoLastMoveConfiguration = moveConfiguration
+        if selectedEngineKind != moveConfiguration.engineKind {
+            selectedEngineProvider.stop()
+        }
+        selectedEngineKind = moveConfiguration.engineKind
+        engineDepth = moveConfiguration.depth
+        boardModel.clearArrows()
+
+        let request = engineSearchRequest(
+            purpose: .opponentMove,
+            engineKind: moveConfiguration.engineKind,
+            depth: moveConfiguration.depth,
+            timeoutSeconds: engineDemoConfiguration.searchTimeout.rawValue
+        )
+        beginOpponentSearch(engineKind: request.engineKind, depth: request.depth, request: request)
+        provider(for: moveConfiguration.engineKind).startOrQueueSearch(request)
     }
 
     /// Sets engine activity and clears transient notices after a short display interval.
@@ -712,11 +973,16 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Records user-visible state for a newly started opponent reply.
-    private func beginOpponentSearch() {
+    private func beginOpponentSearch(
+        engineKind: DemoEngineKind,
+        depth: Int,
+        request: EngineSearchRequest?
+    ) {
         opponentSearchStartedAt = Date()
         opponentSearchTimedOut = false
         latestOpponentPrincipalVariationMove = nil
-        setEngineActivity(.thinking(engine: selectedEngineKind, depth: engineDepth))
+        activeOpponentSearchRequest = request
+        setEngineActivity(.thinking(engine: engineKind, depth: depth))
     }
 
     /// Applies a deterministic provider move for scenario-backed UI tests.
@@ -764,18 +1030,19 @@ final class GameViewModel: ObservableObject {
 
     /// Ignores stale output from an engine, depth, or position that is no longer the active analysis target.
     private func shouldAcceptEngineEvent(for request: EngineSearchRequest) -> Bool {
-        guard request.engineKind == selectedEngineKind else { return false }
-
         switch request.purpose {
         case .opponentMove:
-            return true
+            guard let activeOpponentSearchRequest else { return false }
+            return request == activeOpponentSearchRequest
 
         case .suggestions:
+            guard request.engineKind == selectedEngineKind else { return false }
             return suggestionArrowCount > 0
                 && request.depth == engineDepth
                 && request.fen == fenSerializer.fen(from: boardModel.game.position)
 
         case .evaluation:
+            guard request.engineKind == selectedEngineKind else { return false }
             return suggestionArrowCount == 0
                 && showsEvaluationBar
                 && request.depth == engineDepth
@@ -884,6 +1151,12 @@ final class GameViewModel: ObservableObject {
             return
         }
 
+        if isEngineDemoMode {
+            setEngineActivity(statusNotice.map(EngineActivityState.notice) ?? .idle)
+            handleEngineDemoMoveApplied()
+            return
+        }
+
         setEngineActivity(statusNotice.map(EngineActivityState.notice) ?? .idle)
         refreshCurrentAnalysis(force: false)
     }
@@ -965,10 +1238,12 @@ final class GameViewModel: ObservableObject {
         pendingEngineMoveWorkItem?.cancel()
         let engineKind = engineKind ?? selectedEngineKind
 
-        let remainingDelay = Self.remainingMinimumThinkingDelay(
-            startedAt: opponentSearchStartedAt,
-            minimumDuration: minimumEngineThinkingSeconds
-        )
+        let remainingDelay = isEngineDemoMode
+            ? 0
+            : Self.remainingMinimumThinkingDelay(
+                startedAt: opponentSearchStartedAt,
+                minimumDuration: minimumEngineThinkingSeconds
+            )
 
         guard remainingDelay > 0 else {
             finishOpponentSearch()
@@ -992,6 +1267,7 @@ final class GameViewModel: ObservableObject {
         opponentSearchStartedAt = nil
         opponentSearchTimedOut = false
         latestOpponentPrincipalVariationMove = nil
+        activeOpponentSearchRequest = nil
     }
 
     /// Leaves the game alive when the engine failed to provide a recoverable move.
@@ -999,7 +1275,46 @@ final class GameViewModel: ObservableObject {
         pendingEngineMoveWorkItem?.cancel()
         pendingEngineMoveWorkItem = nil
         finishOpponentSearch()
+        if isEngineDemoMode {
+            engineDemoRunState = .paused
+        }
         setEngineActivity(.notice(message))
+    }
+
+    /// Advances or pauses the engine-vs-engine loop after one move has been applied.
+    private func handleEngineDemoMoveApplied() {
+        switch engineDemoRunState {
+        case .playing:
+            scheduleNextEngineDemoMoveAfterPacing()
+
+        case .stepping, .pausingAfterCurrentMove:
+            engineDemoRunState = .paused
+
+        case .paused:
+            return
+        }
+    }
+
+    /// Schedules the next automatic engine-vs-engine search after the configured post-move delay.
+    private func scheduleNextEngineDemoMoveAfterPacing() {
+        guard isEngineDemoMode, engineDemoRunState == .playing, isGameOngoing else { return }
+
+        engineDemoPacingWorkItem?.cancel()
+        let delay = engineDemoConfiguration.pacing.delay
+        guard delay > 0 else {
+            scheduleEngineMove()
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.engineDemoPacingWorkItem = nil
+            guard self.engineDemoRunState == .playing else { return }
+            self.scheduleEngineMove()
+        }
+
+        engineDemoPacingWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 
     /// Cancels any running engine search without assuming it was active.
@@ -1011,6 +1326,9 @@ final class GameViewModel: ObservableObject {
         pendingEngineMoveWorkItem?.cancel()
         pendingEngineMoveWorkItem = nil
         finishOpponentSearch()
+        engineDemoPacingWorkItem?.cancel()
+        engineDemoPacingWorkItem = nil
+        engineDemoRunState = .paused
         setEngineActivity(.idle)
         // Cancel automatic scenario replay, if active.
         scenarioReplayWorkItem?.cancel()
@@ -1032,9 +1350,36 @@ final class GameViewModel: ObservableObject {
             endGame(title: drawTitle(for: reason), message: "Draw")
             return true
 
-        case .ongoing:
-            return false
+        case .ongoing(let drawClaims):
+            guard isEngineDemoMode,
+                  let drawClaim = automaticEngineDemoDrawClaim(from: drawClaims)
+            else {
+                return false
+            }
+
+            do {
+                try boardModel.game.claimDraw(drawClaim)
+            } catch {
+                return false
+            }
+
+            refreshGameSnapshot()
+            endGame(title: drawTitle(for: drawReason(for: drawClaim)), message: "Draw")
+            return true
         }
+    }
+
+    /// Chooses a claimable draw to auto-claim in engine-vs-engine mode.
+    private func automaticEngineDemoDrawClaim(from drawClaims: Set<GameDrawClaim>) -> GameDrawClaim? {
+        if drawClaims.contains(.threefoldRepetition) {
+            return .threefoldRepetition
+        }
+
+        if drawClaims.contains(.fiftyMoveRule) {
+            return .fiftyMoveRule
+        }
+
+        return nil
     }
 
     /// Presents the game result and stops the engine.
@@ -1047,6 +1392,11 @@ final class GameViewModel: ObservableObject {
 
     /// Starts or refreshes selected-engine analysis for the current player-turn position.
     private func refreshCurrentAnalysis(force: Bool) {
+        guard !isEngineDemoMode else {
+            boardModel.clearArrows()
+            return
+        }
+
         guard boardModel.game.position.state.turn == playerColor else {
             boardModel.clearArrows()
             return
@@ -1138,15 +1488,76 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Captures the current board position and search settings in one immutable request.
-    private func engineSearchRequest(purpose: EngineSearchPurpose) -> EngineSearchRequest {
+    private func engineSearchRequest(
+        purpose: EngineSearchPurpose,
+        engineKind: DemoEngineKind? = nil,
+        depth: Int? = nil,
+        timeoutSeconds: Int = EngineSearchRequest.defaultTimeoutSeconds
+    ) -> EngineSearchRequest {
         EngineSearchRequest(
-            engineKind: selectedEngineKind,
+            engineKind: engineKind ?? selectedEngineKind,
             purpose: purpose,
             fen: fenSerializer.fen(from: boardModel.game.position),
             sideToMove: boardModel.game.position.state.turn,
-            depth: engineDepth,
-            multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1
+            depth: depth ?? engineDepth,
+            multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1,
+            timeoutSeconds: timeoutSeconds
         )
+    }
+
+    /// Chooses the concrete engine and depth for the current engine-vs-engine move.
+    private func nextEngineDemoMoveConfiguration() -> EngineDemoMoveConfiguration {
+        let side = boardModel.game.position.state.turn
+        var sideConfiguration = engineDemoConfiguration.sideConfiguration(for: side)
+        let stress = engineDemoConfiguration.stress.normalized()
+
+        if stress.isEnabled {
+            if stress.randomizesEngineEachMove,
+               let randomizedEngine = DemoEngineKind.allCases.randomElement(using: &engineDemoRandomGenerator)
+            {
+                sideConfiguration.engineKind = randomizedEngine
+            }
+
+            if stress.randomizesDepthEachMove {
+                sideConfiguration.depth = Int.random(
+                    in: stress.minimumDepth...stress.maximumDepth,
+                    using: &engineDemoRandomGenerator
+                )
+            }
+        }
+
+        return EngineDemoMoveConfiguration(
+            side: side,
+            engineKind: sideConfiguration.engineKind,
+            depth: EngineDemoConfiguration.clampedDepth(sideConfiguration.depth)
+        )
+    }
+
+    /// Applies a normalized engine-vs-engine configuration mutation.
+    private func updateEngineDemoConfiguration(
+        resetRandomGenerator: Bool = false,
+        _ update: (inout EngineDemoConfiguration) -> Void
+    ) {
+        var updatedConfiguration = engineDemoConfiguration
+        update(&updatedConfiguration)
+        updatedConfiguration = updatedConfiguration.normalized()
+
+        let shouldResetRandomGenerator = resetRandomGenerator
+            || updatedConfiguration.stress.seed != engineDemoConfiguration.stress.seed
+        engineDemoConfiguration = updatedConfiguration
+
+        if shouldResetRandomGenerator {
+            engineDemoRandomGenerator = SeededRandomGenerator(seed: updatedConfiguration.stress.seed)
+        }
+    }
+
+    /// Keeps board accessibility and status metadata aligned with the next demo side while idle.
+    private func syncSelectedEngineToCurrentEngineDemoSideIfIdle() {
+        guard isEngineDemoMode, !hasActiveEngineDemoWork else { return }
+
+        let configuration = engineDemoConfiguration.sideConfiguration(for: boardModel.game.position.state.turn)
+        selectedEngineKind = configuration.engineKind
+        engineDepth = configuration.depth
     }
 
     /// Creates deterministic suggestion arrows from a non-live-engine provider.
@@ -1284,7 +1695,7 @@ final class GameViewModel: ObservableObject {
 
     /// User-facing checkmate message for live games and deterministic scenarios.
     private func checkmateMessage(winner: PieceColor) -> String {
-        if moveProvider?.isAutomaticReplay == true {
+        if moveProvider?.isAutomaticReplay == true || isEngineDemoMode {
             return "\(winner.displayName) wins"
         }
 
@@ -1303,6 +1714,15 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Pattern-matches ChessCore's ongoing status without caring about available draw claims.
+    private static func isOngoing(_ status: GameStatus) -> Bool {
+        switch status {
+        case .ongoing:
+            return true
+        case .checkmate, .draw:
+            return false
+        }
+    }
 }
 
 private extension PieceColor {

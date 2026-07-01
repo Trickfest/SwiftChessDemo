@@ -52,6 +52,10 @@ struct ContentView: View {
     private let scenarioIndexValidationResult: Result<GameScenarioIndexValidationSummary, GameScenarioIndexValidationError>?
     /// Which side the user has selected in the segmented control.
     @State private var playerSide: PlayerSide
+    /// Top-level mode for manually started games.
+    @State private var gameMode: DemoGameMode
+    /// Engine-vs-engine settings used when the demo mode is selected.
+    @State private var engineDemoConfiguration: EngineDemoConfiguration
 
     /// Creates the setup view and applies scenario defaults when requested.
     init(
@@ -62,21 +66,23 @@ struct ContentView: View {
         self.scenarioIndexValidationResult = scenarioIndexValidationResult
         let requestedScenario = (try? requestedScenarioResult.get()) ?? nil
         _playerSide = State(initialValue: PlayerSide(pieceColor: requestedScenario?.initialPerspective ?? .white))
+        _gameMode = State(initialValue: .humanVsEngine)
+        _engineDemoConfiguration = State(
+            initialValue: EngineDemoConfiguration.defaultConfiguration(defaultDepth: Self.initialEngineDepth)
+        )
     }
 
     var body: some View {
         // NavigationStack enables the push to the game screen.
         NavigationStack {
             VStack(spacing: 24) {
-                // Use a segmented picker to keep the choice compact and obvious.
-                Picker("Side", selection: $playerSide) {
-                    ForEach(PlayerSide.allCases) { side in
-                        Text(side.rawValue).tag(side)
-                    }
+                modePicker
+
+                if requestedScenario == nil, gameMode == .engineVsEngine {
+                    engineDemoSetupSection
+                } else {
+                    sidePicker
                 }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("Setup.sidePicker")
-                .disabled(requestedScenario != nil)
 
                 if let requestedScenario {
                     Text(requestedScenario.title)
@@ -132,6 +138,8 @@ struct ContentView: View {
                         playerColor: requestedScenario?.initialPerspective ?? playerSide.pieceColor,
                         pieceSet: .artDecoMonochrome,
                         boardTheme: .artDecoMonochrome,
+                        gameMode: requestedScenario == nil ? gameMode : .humanVsEngine,
+                        engineDemoConfiguration: engineDemoConfiguration.normalized(),
                         scenario: requestedScenario
                     )
                 }
@@ -157,6 +165,144 @@ struct ContentView: View {
     private var scenarioIndexValidationError: GameScenarioIndexValidationError? {
         guard case .failure(let error)? = scenarioIndexValidationResult else { return nil }
         return error
+    }
+
+    private var modePicker: some View {
+        Picker("Mode", selection: $gameMode) {
+            ForEach(DemoGameMode.allCases) { mode in
+                Text(mode.displayName).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("Setup.gameModePicker")
+        .disabled(requestedScenario != nil)
+    }
+
+    private var sidePicker: some View {
+        Picker("Side", selection: $playerSide) {
+            ForEach(PlayerSide.allCases) { side in
+                Text(side.rawValue).tag(side)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("Setup.sidePicker")
+        .disabled(requestedScenario != nil)
+    }
+
+    private var engineDemoSetupSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Engine Demo")
+                .font(.headline)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            engineSideControl(title: "White", color: .white)
+            engineSideControl(title: "Black", color: .black)
+
+            engineDemoPacingControl
+            engineDemoTimeoutControl
+        }
+        .padding(14)
+        .background {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.08))
+        }
+    }
+
+    private var engineDemoPacingControl: some View {
+        HStack {
+            Text("Pacing")
+                .font(.subheadline)
+
+            Spacer()
+
+            Picker("Pacing", selection: $engineDemoConfiguration.pacing) {
+                ForEach(EngineDemoPacing.allCases) { pacing in
+                    Text(pacing.displayName).tag(pacing)
+                }
+            }
+            .labelsHidden()
+            .accessibilityIdentifier("Setup.engineDemoPacingPicker")
+        }
+    }
+
+    private var engineDemoTimeoutControl: some View {
+        HStack {
+            Text("Timeout")
+                .font(.subheadline)
+
+            Spacer()
+
+            Picker("Timeout", selection: $engineDemoConfiguration.searchTimeout) {
+                ForEach(EngineDemoSearchTimeout.allCases) { timeout in
+                    Text(timeout.displayName).tag(timeout)
+                }
+            }
+            .labelsHidden()
+            .accessibilityIdentifier("Setup.engineDemoTimeoutPicker")
+        }
+    }
+
+    private func engineSideControl(title: String, color: PieceColor) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("\(title) Engine", selection: engineKindBinding(for: color)) {
+                ForEach(DemoEngineKind.allCases) { engineKind in
+                    Text(engineKind.displayName).tag(engineKind)
+                }
+            }
+            .accessibilityIdentifier("Setup.engineDemo\(title)EnginePicker")
+
+            Stepper(
+                value: engineDepthBinding(for: color),
+                in: EngineDemoConfiguration.minimumDepth...EngineDemoConfiguration.maximumDepth
+            ) {
+                Text("\(title) depth \(engineDepth(for: color))")
+                    .font(.caption)
+            }
+            .accessibilityIdentifier("Setup.engineDemo\(title)DepthStepper")
+            .accessibilityValue("\(engineDepth(for: color))")
+        }
+    }
+
+    private func engineKindBinding(for color: PieceColor) -> Binding<DemoEngineKind> {
+        Binding {
+            engineDemoConfiguration.sideConfiguration(for: color).engineKind
+        } set: { engineKind in
+            switch color {
+            case .white:
+                engineDemoConfiguration.white.engineKind = engineKind
+            case .black:
+                engineDemoConfiguration.black.engineKind = engineKind
+            }
+        }
+    }
+
+    private func engineDepthBinding(for color: PieceColor) -> Binding<Int> {
+        Binding {
+            engineDepth(for: color)
+        } set: { depth in
+            switch color {
+            case .white:
+                engineDemoConfiguration.white.depth = EngineDemoConfiguration.clampedDepth(depth)
+            case .black:
+                engineDemoConfiguration.black.depth = EngineDemoConfiguration.clampedDepth(depth)
+            }
+        }
+    }
+
+    private func engineDepth(for color: PieceColor) -> Int {
+        engineDemoConfiguration.sideConfiguration(for: color).depth
+    }
+
+    /// UI-test launches can lower the setup default so live engine smoke tests stay fast.
+    private static var initialEngineDepth: Int {
+        let environment = ProcessInfo.processInfo.environment
+        guard let depthValue = environment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_DEPTH"],
+              let depth = Int(depthValue)
+        else {
+            return EngineDemoConfiguration.defaultDepth
+        }
+
+        return EngineDemoConfiguration.clampedDepth(depth)
     }
 }
 
