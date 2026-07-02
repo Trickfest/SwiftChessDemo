@@ -30,6 +30,8 @@ for a release. Tagged releases use dated version headings.
 - Changed Engine vs Engine board updates to use instant move feedback so
   CPU-heavy searches cannot leave a temporary piece animation visible while the
   next engine thinks.
+- Changed new games to start with the Sashite Merida piece set on the Classic
+  Green board theme.
 
 ### Fixed
 

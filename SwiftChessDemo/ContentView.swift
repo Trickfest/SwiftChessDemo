@@ -136,8 +136,8 @@ struct ContentView: View {
                 NavigationLink("Start Game") {
                     GameView(
                         playerColor: requestedScenario?.initialPerspective ?? playerSide.pieceColor,
-                        pieceSet: .artDecoMonochrome,
-                        boardTheme: .artDecoMonochrome,
+                        pieceSet: .sashiteMerida,
+                        boardTheme: .classicGreen,
                         gameMode: requestedScenario == nil ? gameMode : .humanVsEngine,
                         engineDemoConfiguration: engineDemoConfiguration.normalized(),
                         scenario: requestedScenario

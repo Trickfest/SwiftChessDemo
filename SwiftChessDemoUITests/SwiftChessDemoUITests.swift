@@ -122,8 +122,8 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "game board state"
         )
 
-        XCTAssertEqual(picker.value as? String, "Art Deco Monochrome")
-        XCTAssertTrue((board.value as? String)?.contains("Pieces: Art Deco Monochrome") == true)
+        XCTAssertEqual(picker.value as? String, "Sashite Merida")
+        XCTAssertTrue((board.value as? String)?.contains("Pieces: Sashite Merida") == true)
 
         for pieceSetName in pieceSetNames {
             try select(pieceSetName, from: picker, in: app)
@@ -148,8 +148,8 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "game board state"
         )
 
-        XCTAssertEqual(picker.value as? String, "Art Deco Monochrome")
-        XCTAssertTrue((board.value as? String)?.contains("Board: Art Deco Monochrome") == true)
+        XCTAssertEqual(picker.value as? String, "Classic Green")
+        XCTAssertTrue((board.value as? String)?.contains("Board: Classic Green") == true)
 
         for boardThemeName in boardThemeNames {
             try select(boardThemeName, from: picker, in: app)
