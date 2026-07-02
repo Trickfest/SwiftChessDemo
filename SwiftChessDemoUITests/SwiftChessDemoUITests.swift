@@ -691,6 +691,23 @@ final class SwiftChessDemoUITests: XCTestCase {
 
         let alert = try requireElement(app.alerts["Checkmate"].firstMatch, named: "checkmate alert")
         XCTAssertTrue(alert.staticTexts["Black wins"].exists)
+        try requireElement(alert.buttons["OK"].firstMatch, named: "checkmate OK button").tap()
+
+        try waitForGameBoardState(
+            containing: "Scenario status: Checkmate, Black wins",
+            in: app,
+            named: "fool's mate final board after alert dismissal"
+        )
+        let visibleFinalMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.4"].firstMatch,
+            named: "fool's mate final move after alert dismissal"
+        )
+        XCTAssertEqual(visibleFinalMove.value as? String, "d8h4")
+        XCTAssertFalse(app.buttons["Start Game"].waitForExistence(timeout: 1))
+
+        try requireElement(app.buttons["Back"].firstMatch, named: "terminal back button").tap()
+        XCTAssertFalse(app.alerts["Are you sure you want to resign?"].waitForExistence(timeout: 1))
+        try requireElement(app.buttons["Start Game"].firstMatch, named: "start game button after terminal back")
     }
 
     func testGameScenarioReplayStartsFromTerminalStalemate() throws {

@@ -975,6 +975,80 @@ final class GameViewModelEngineDemoTests: XCTestCase {
         assertResultAlert(viewModel.activeAlert, title: "Draw by repetition", message: "Draw")
     }
 
+    func testEngineDemoTerminalStateExposesPlayAgainWithoutStaleWork() throws {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
+        viewModel.boardModel.game = try Self.claimableThreefoldGame()
+
+        viewModel.startIfNeeded()
+
+        XCTAssertEqual(viewModel.boardModel.game.status, .draw(.threefoldRepetition))
+        XCTAssertEqual(viewModel.engineDemoRunState, .paused)
+        XCTAssertEqual(viewModel.engineDemoPrimaryControlTitle, "Play Again")
+        XCTAssertTrue(viewModel.canRestartEngineDemo)
+        XCTAssertFalse(viewModel.canStepEngineDemo)
+        XCTAssertEqual(viewModel.engineActivity, .idle)
+        XCTAssertNil(viewModel.engineDemoLastMoveConfiguration)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+        assertResultAlert(viewModel.activeAlert, title: "Draw by repetition", message: "Draw")
+    }
+
+    func testEngineDemoPlayAgainResetsBoardAndStartsFromCurrentSettings() throws {
+        let harness = EngineAnalysisHarness()
+        let initialConfiguration = EngineDemoConfiguration(
+            white: EngineDemoSideConfiguration(engineKind: .stockfish, moveTime: .oneSecond),
+            black: EngineDemoSideConfiguration(engineKind: .arasan, moveTime: .twoSeconds),
+            pacing: .fiveSeconds,
+            stress: EngineDemoStressConfiguration(
+                isEnabled: true,
+                randomizesEngineEachMove: false,
+                randomizesMoveTimeEachMove: false,
+                minimumMoveTime: .quarterSecond,
+                maximumMoveTime: .fiveSeconds,
+                seed: 99
+            )
+        )
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: initialConfiguration
+        )
+        viewModel.boardModel.game = try Self.claimableThreefoldGame()
+
+        viewModel.startIfNeeded()
+        viewModel.setEngineDemoEngineKind(.arasan, for: .white)
+        viewModel.setEngineDemoMoveTime(.halfSecond, for: .white)
+        viewModel.setEngineDemoMoveTime(.fiveSeconds, for: .black)
+        viewModel.activeAlert = nil
+
+        viewModel.toggleEngineDemoPlayback()
+
+        let standardFEN = FENSerializer().fen(from: Position.standard)
+        XCTAssertEqual(viewModel.positionFEN, standardFEN)
+        XCTAssertEqual(viewModel.boardModel.fen, standardFEN)
+        XCTAssertEqual(viewModel.moveRecords, [])
+        XCTAssertNil(viewModel.selectedMovePly)
+        XCTAssertEqual(viewModel.evaluation, .unavailable)
+        XCTAssertEqual(viewModel.engineDemoRunState, .playing)
+        XCTAssertFalse(viewModel.canRestartEngineDemo)
+        XCTAssertFalse(viewModel.canStepEngineDemo)
+        XCTAssertNil(viewModel.activeAlert)
+        XCTAssertEqual(viewModel.engineDemoConfiguration.pacing, .fiveSeconds)
+        XCTAssertEqual(viewModel.engineDemoConfiguration.stress, initialConfiguration.stress)
+        XCTAssertEqual(viewModel.engineDemoConfiguration.white.engineKind, .arasan)
+        XCTAssertEqual(viewModel.engineDemoConfiguration.white.moveTime, .halfSecond)
+        XCTAssertEqual(viewModel.engineDemoConfiguration.black.moveTime, .fiveSeconds)
+
+        let request = harness.arasan.requireLastRequest()
+        XCTAssertEqual(request.fen, standardFEN)
+        XCTAssertEqual(request.sideToMove, .white)
+        XCTAssertEqual(request.moveTimeMilliseconds, EngineMoveTime.halfSecond.rawValue)
+        XCTAssertEqual(viewModel.engineDemoLastMoveConfiguration?.side, .white)
+        XCTAssertEqual(viewModel.engineDemoLastMoveConfiguration?.engineKind, .arasan)
+        XCTAssertEqual(viewModel.engineDemoLastMoveConfiguration?.moveTime, .halfSecond)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+    }
+
     func testHumanVsEngineDoesNotAutoClaimThreefoldRepetition() throws {
         let harness = EngineAnalysisHarness()
         let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)

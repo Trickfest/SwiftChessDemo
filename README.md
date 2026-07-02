@@ -129,6 +129,10 @@ Data flow at a glance:
 - Engine-vs-engine mode automatically claims ChessCore draw claims such as
   threefold repetition and the 50-move rule. Human-vs-engine games leave those
   claimable draws available to the player instead of ending automatically.
+- Completed games keep the user on the game screen after the result alert is
+  dismissed, so the final board and move history can still be inspected. In
+  engine-vs-engine mode, the primary playback control becomes `Play Again` and
+  restarts from the initial position while preserving the current demo settings.
 - Engine-vs-engine stress mode can randomize the engine and/or move-time budget
   before each move within a configured range. Randomization happens before a
   search starts, never while an engine request is in flight, so the mode is
@@ -163,13 +167,14 @@ Key files to read:
   status and move-list components, status-row engine activity and timeout
   notices, optional evaluation-bar display, in-game engine move-time control,
   selectable move-suggestion arrows, engine-vs-engine playback controls,
-  compact horizontal move-list layout on iPhone, and navigation flow.
+  terminal-result handling, compact horizontal move-list layout on iPhone, and
+  navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
   fallback, evaluation normalization, selected-engine MultiPV suggestion
   mapping, engine-vs-engine loop control, automatic draw-claim policy for
-  engine-vs-engine games, stress-mode randomization, and ChessCore game-status
-  integration.
+  engine-vs-engine games, engine-demo replay reset behavior, stress-mode
+  randomization, and ChessCore game-status integration.
 - `SwiftChessDemo/EngineDemoConfiguration.swift`: value types that describe
   engine-vs-engine mode, per-side engine/move-time settings, pacing, and
   optional deterministic stress randomization.
@@ -191,13 +196,14 @@ Key files to read:
   definitions, and PGN fixtures.
 - `SwiftChessDemoTests/GameScenarioUnitTests.swift`: fast unit coverage for
   scenario loading, index validation, deterministic move-provider behavior,
-  live-analysis refreshes, and engine-vs-engine playback/stress behavior.
+  live-analysis refreshes, and engine-vs-engine playback/restart/stress
+  behavior.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
   live-engine selection, status, move-list, evaluation display options,
   selectable suggestion arrows, engine-vs-engine setup/control rendering,
-  scenario replay, and four-full-move game flows from both white and black
-  perspectives.
+  scenario replay including terminal-result dismissal, and four-full-move game
+  flows from both white and black perspectives.
 
 Automated tests:
 - Run the suite from this repo root:

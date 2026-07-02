@@ -147,6 +147,8 @@ final class GameViewModel: ObservableObject {
     private let moveProvider: GameMoveProvider?
     /// Scenario being replayed, if this game was launched in scenario mode.
     private let scenario: GameScenario?
+    /// Position used when replaying an engine-vs-engine demo from the beginning.
+    private let initialPosition: Position
     /// Work item used to hold a fast engine reply until the minimum visible thinking time elapses.
     private var pendingEngineMoveWorkItem: DispatchWorkItem?
     /// Work item used to restore the normal game-status row after transient engine notices.
@@ -237,6 +239,7 @@ final class GameViewModel: ObservableObject {
         self.boardTheme = boardTheme
         // Use the scenario's starting position when replaying PGN fixtures.
         let initialPosition = scenario?.initialPosition ?? Position.standard
+        self.initialPosition = initialPosition
         let initialFen = FENSerializer().fen(from: initialPosition)
         let initialGame = Game(position: initialPosition)
         self.positionFEN = initialFen
@@ -429,6 +432,14 @@ final class GameViewModel: ObservableObject {
             && isGameOngoing
     }
 
+    /// Whether a completed engine-vs-engine game can be restarted from the current screen.
+    var canRestartEngineDemo: Bool {
+        isEngineDemoMode
+            && engineDemoRunState == .paused
+            && !hasActiveEngineDemoWork
+            && !isGameOngoing
+    }
+
     /// Whether the current ChessCore status is still playable.
     var isGameOngoing: Bool {
         Self.isOngoing(gameStatus)
@@ -436,6 +447,10 @@ final class GameViewModel: ObservableObject {
 
     /// Primary demo-control title derived from the playback state.
     var engineDemoPrimaryControlTitle: String {
+        if canRestartEngineDemo {
+            return "Play Again"
+        }
+
         switch engineDemoRunState {
         case .playing:
             return "Pause"
@@ -568,8 +583,22 @@ final class GameViewModel: ObservableObject {
         case .playing, .stepping, .pausingAfterCurrentMove:
             pauseEngineDemo()
         case .paused:
-            playEngineDemo()
+            if canRestartEngineDemo {
+                restartEngineDemoAndPlay()
+            } else {
+                playEngineDemo()
+            }
         }
+    }
+
+    /// Restarts a completed engine-vs-engine game using the current demo preferences.
+    func restartEngineDemoAndPlay() {
+        guard canRestartEngineDemo else { return }
+
+        resetEngineDemoGame()
+        engineDemoRunState = .playing
+        syncSelectedEngineToCurrentEngineDemoSideIfIdle()
+        scheduleEngineMove()
     }
 
     /// Starts continuous engine-vs-engine playback from the current position.
@@ -1314,6 +1343,33 @@ final class GameViewModel: ObservableObject {
         moveProvider?.cancel()
         stockfishProvider.stop()
         arasanProvider.stop()
+    }
+
+    /// Restores the board and derived game state while preserving user-selected demo preferences.
+    private func resetEngineDemoGame() {
+        stopEngineIfNeeded()
+        activeAlert = nil
+
+        let game = Game(position: initialPosition)
+        let fen = fenSerializer.fen(from: initialPosition)
+
+        moveRecords.removeAll()
+        selectedMovePly = nil
+        evaluation = Self.initialEvaluation
+        positionFEN = fen
+        suggestedMovesByRank.removeAll()
+        suggestedMovesPositionFEN = nil
+        latestOpponentPrincipalVariationMove = nil
+        opponentSearchTimedOut = false
+        opponentSearchStartedAt = nil
+        activeOpponentSearchRequest = nil
+        engineDemoLastMoveConfiguration = nil
+        engineDemoRandomGenerator = SeededRandomGenerator(seed: engineDemoConfiguration.stress.seed)
+        boardModel.clearArrows()
+        boardModel.setFEN(fen)
+        boardModel.game = game
+        refreshGameSnapshot(from: game)
+        setEngineActivity(.idle)
     }
 
     /// Evaluates draw and win conditions using ChessCore state.

@@ -64,7 +64,11 @@ struct GameView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
-                    viewModel.requestResignConfirmation()
+                    if viewModel.isGameOngoing {
+                        viewModel.requestResignConfirmation()
+                    } else {
+                        dismiss()
+                    }
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
                 }
@@ -93,9 +97,7 @@ struct GameView: View {
                 return Alert(
                     title: Text(result.title),
                     message: Text(result.message),
-                    dismissButton: .default(Text("OK")) {
-                        dismiss()
-                    }
+                    dismissButton: .default(Text("OK"))
                 )
             }
         }
@@ -542,6 +544,10 @@ struct GameView: View {
     }
 
     private var engineDemoPrimaryControlSystemImage: String {
+        if viewModel.canRestartEngineDemo {
+            return "arrow.counterclockwise"
+        }
+
         switch viewModel.engineDemoRunState {
         case .playing, .stepping, .pausingAfterCurrentMove:
             return "pause.fill"
@@ -554,8 +560,10 @@ struct GameView: View {
         switch viewModel.engineDemoRunState {
         case .stepping, .pausingAfterCurrentMove:
             return true
-        case .paused, .playing:
-            return !viewModel.isGameOngoing
+        case .playing:
+            return false
+        case .paused:
+            return !viewModel.isGameOngoing && !viewModel.canRestartEngineDemo
         }
     }
 

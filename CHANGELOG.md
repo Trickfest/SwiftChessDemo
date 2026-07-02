@@ -5,9 +5,23 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
-## Unreleased
+## 1.1.1 - 2026-07-02
 
-No unreleased changes.
+### Changed
+
+- Changed terminal game alerts so dismissing the result keeps the final board
+  and move history visible instead of returning immediately to setup.
+- Changed completed Engine vs Engine games to expose a `Play Again` action that
+  restarts from the initial position with the current engine-demo settings.
+
+### Fixed
+
+- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.5 so engine-vs-
+  engine games avoid an Arasan debug assertion crash when a mate-range hash
+  score is stored from a deeper ply.
+- Added regression coverage for terminal scenario alerts, terminal back
+  navigation, Engine vs Engine restart behavior, preserved restart settings,
+  and stale-work prevention after completed engine-demo games.
 
 ## 1.1.0 - 2026-07-02
 
