@@ -5,7 +5,7 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
-## Unreleased
+## 1.1.2 - 2026-07-02
 
 ### Changed
 
