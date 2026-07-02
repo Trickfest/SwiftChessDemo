@@ -5,6 +5,14 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
+## Unreleased
+
+### Changed
+
+- Removed duplicate Engine vs Engine parameter controls from the setup screen;
+  the game screen now owns White/Black engine selection, move-time budgets,
+  pacing, and stress options.
+
 ## 1.1.1 - 2026-07-02
 
 ### Changed

@@ -54,8 +54,6 @@ struct ContentView: View {
     @State private var playerSide: PlayerSide
     /// Top-level mode for manually started games.
     @State private var gameMode: DemoGameMode
-    /// Engine-vs-engine settings used when the demo mode is selected.
-    @State private var engineDemoConfiguration: EngineDemoConfiguration
 
     /// Creates the setup view and applies scenario defaults when requested.
     init(
@@ -67,9 +65,6 @@ struct ContentView: View {
         let requestedScenario = (try? requestedScenarioResult.get()) ?? nil
         _playerSide = State(initialValue: PlayerSide(pieceColor: requestedScenario?.initialPerspective ?? .white))
         _gameMode = State(initialValue: .humanVsEngine)
-        _engineDemoConfiguration = State(
-            initialValue: EngineDemoConfiguration.defaultConfiguration(defaultMoveTime: Self.initialEngineMoveTime)
-        )
     }
 
     var body: some View {
@@ -78,9 +73,7 @@ struct ContentView: View {
             VStack(spacing: 24) {
                 modePicker
 
-                if requestedScenario == nil, gameMode == .engineVsEngine {
-                    engineDemoSetupSection
-                } else {
+                if requestedScenario != nil || gameMode == .humanVsEngine {
                     sidePicker
                 }
 
@@ -139,7 +132,7 @@ struct ContentView: View {
                         pieceSet: .sashiteMerida,
                         boardTheme: .classicGreen,
                         gameMode: requestedScenario == nil ? gameMode : .humanVsEngine,
-                        engineDemoConfiguration: engineDemoConfiguration.normalized(),
+                        engineDemoConfiguration: engineDemoConfiguration,
                         scenario: requestedScenario
                     )
                 }
@@ -189,96 +182,9 @@ struct ContentView: View {
         .disabled(requestedScenario != nil)
     }
 
-    private var engineDemoSetupSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Engine Demo")
-                .font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            engineSideControl(title: "White", color: .white)
-            engineSideControl(title: "Black", color: .black)
-
-            engineDemoPacingControl
-        }
-        .padding(14)
-        .background {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.secondary.opacity(0.08))
-        }
-    }
-
-    private var engineDemoPacingControl: some View {
-        HStack {
-            Text("Pacing")
-                .font(.subheadline)
-
-            Spacer()
-
-            Picker("Pacing", selection: $engineDemoConfiguration.pacing) {
-                ForEach(EngineDemoPacing.allCases) { pacing in
-                    Text(pacing.displayName).tag(pacing)
-                }
-            }
-            .labelsHidden()
-            .accessibilityIdentifier("Setup.engineDemoPacingPicker")
-        }
-    }
-
-    private func engineSideControl(title: String, color: PieceColor) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Picker("\(title) Engine", selection: engineKindBinding(for: color)) {
-                ForEach(DemoEngineKind.allCases) { engineKind in
-                    Text(engineKind.displayName).tag(engineKind)
-                }
-            }
-            .accessibilityIdentifier("Setup.engineDemo\(title)EnginePicker")
-
-            HStack {
-                Text("\(title) move time")
-                    .font(.caption)
-
-                Spacer()
-
-                Picker("\(title) Move Time", selection: engineMoveTimeBinding(for: color)) {
-                    ForEach(EngineMoveTime.allCases) { moveTime in
-                        Text(moveTime.displayName).tag(moveTime)
-                    }
-                }
-                .labelsHidden()
-                .accessibilityIdentifier("Setup.engineDemo\(title)MoveTimePicker")
-                .accessibilityValue(engineMoveTime(for: color).displayName)
-            }
-        }
-    }
-
-    private func engineKindBinding(for color: PieceColor) -> Binding<DemoEngineKind> {
-        Binding {
-            engineDemoConfiguration.sideConfiguration(for: color).engineKind
-        } set: { engineKind in
-            switch color {
-            case .white:
-                engineDemoConfiguration.white.engineKind = engineKind
-            case .black:
-                engineDemoConfiguration.black.engineKind = engineKind
-            }
-        }
-    }
-
-    private func engineMoveTimeBinding(for color: PieceColor) -> Binding<EngineMoveTime> {
-        Binding {
-            engineMoveTime(for: color)
-        } set: { moveTime in
-            switch color {
-            case .white:
-                engineDemoConfiguration.white.moveTime = moveTime
-            case .black:
-                engineDemoConfiguration.black.moveTime = moveTime
-            }
-        }
-    }
-
-    private func engineMoveTime(for color: PieceColor) -> EngineMoveTime {
-        engineDemoConfiguration.sideConfiguration(for: color).moveTime
+    /// Initial Engine vs Engine settings. Further changes live on the game screen.
+    private var engineDemoConfiguration: EngineDemoConfiguration {
+        EngineDemoConfiguration.defaultConfiguration(defaultMoveTime: Self.initialEngineMoveTime).normalized()
     }
 
     /// UI-test launches can lower the setup default so live engine smoke tests stay fast.

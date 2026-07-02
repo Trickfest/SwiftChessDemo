@@ -119,10 +119,10 @@ Data flow at a glance:
   suggestion-count picker. ChessUI renders the arrows but does not decide which
   moves to suggest.
 - The engine returns `bestmove`; `ChessUCI` parses it into a `ChessCore.Move`.
-- Engine-vs-engine mode starts paused, lets the user choose White and Black
-  engines and move-time budgets independently, and uses Play/Pause or Step
-  controls to apply engine moves through the same ChessCore move-application
-  path as normal gameplay.
+- Engine-vs-engine mode starts paused with default Stockfish-vs-Arasan
+  settings. The game screen is the single place to choose White and Black
+  engines, move-time budgets, pacing, and stress options before pressing Play
+  or Step.
 - Engine-vs-engine uses the same UCI `go movetime` search policy as
   human-vs-engine play. The app derives its safety timeout from the selected
   move time, so there is no separate user-facing timeout setting.
@@ -160,8 +160,8 @@ Reference-app boundaries:
   SwiftChessTools public API.
 
 Key files to read:
-- `SwiftChessDemo/ContentView.swift`: configuration UI for choosing the game
-  mode, human side, or initial engine-vs-engine settings.
+- `SwiftChessDemo/ContentView.swift`: setup UI for choosing the game mode and
+  human side before entering the game screen.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme,
   engine-selection, and coordinate-label switching during play, visible ChessUI
   status and move-list components, status-row engine activity and timeout
@@ -201,7 +201,7 @@ Key files to read:
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
   in-game piece-set selection, board-theme selection, coordinate-label toggling,
   live-engine selection, status, move-list, evaluation display options,
-  selectable suggestion arrows, engine-vs-engine setup/control rendering,
+  selectable suggestion arrows, engine-vs-engine setup and game-screen controls,
   scenario replay including terminal-result dismissal, and four-full-move game
   flows from both white and black perspectives.
 
@@ -243,9 +243,10 @@ xcodebuild -project SwiftChessDemo.xcodeproj \
   Pause, Step, per-side engine/move-time settings, safety-timeout propagation,
   automatic draw-claim policy, and seeded stress randomization behave
   deterministically without starting live engine processes.
-- Engine-vs-engine UI coverage verifies that the setup mode launches into a
-  paused game with demo-only playback controls visible and the normal live-game
-  engine picker hidden.
+- Engine-vs-engine UI coverage verifies that the setup mode keeps duplicate
+  engine-demo controls off the setup screen, then launches into a paused game
+  with demo-only playback controls visible and the normal live-game engine
+  picker hidden.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live engine analysis.

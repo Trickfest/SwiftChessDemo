@@ -200,24 +200,18 @@ final class SwiftChessDemoUITests: XCTestCase {
         app.launch()
 
         try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
-        try requireElement(app.staticTexts["Pacing"].firstMatch, named: "setup pacing label")
-
-        let setupWhiteMoveTimePicker = try requireElement(
-            app.descendants(matching: .any)["Setup.engineDemoWhiteMoveTimePicker"].firstMatch,
-            named: "setup white move-time picker"
-        )
-        try select("500ms", from: setupWhiteMoveTimePicker, in: app)
-        let setupBlackMoveTimePicker = try requireElement(
-            app.descendants(matching: .any)["Setup.engineDemoBlackMoveTimePicker"].firstMatch,
-            named: "setup black move-time picker"
-        )
-        try select("2s", from: setupBlackMoveTimePicker, in: app)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.sidePicker"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.engineDemoWhiteEnginePicker"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.engineDemoBlackEnginePicker"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.engineDemoWhiteMoveTimePicker"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.engineDemoBlackMoveTimePicker"].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["Setup.engineDemoPacingPicker"].firstMatch.exists)
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
         try waitForGameBoardState(containing: "Mode: Engine vs Engine", in: app, named: "engine demo mode")
         try waitForGameBoardState(containing: "Demo state: Play", in: app, named: "engine demo paused state")
-        try waitForGameBoardState(containing: "White move time: 500ms", in: app, named: "engine demo white setup move time")
-        try waitForGameBoardState(containing: "Black move time: 2s", in: app, named: "engine demo black setup move time")
+        try waitForGameBoardState(containing: "White move time: 250ms", in: app, named: "engine demo white default move time")
+        try waitForGameBoardState(containing: "Black move time: 250ms", in: app, named: "engine demo black default move time")
 
         try requireElement(
             app.descendants(matching: .any)["Game.engineDemoPlayPauseButton"].firstMatch,
@@ -235,7 +229,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             app.descendants(matching: .any)["Game.engineDemoWhiteMoveTimePicker"].firstMatch,
             named: "engine demo white move-time picker"
         )
-        XCTAssertEqual(whiteMoveTimePicker.value as? String, "500ms")
+        XCTAssertEqual(whiteMoveTimePicker.value as? String, "250ms")
         try select("1s", from: whiteMoveTimePicker, in: app)
         try waitForElementValue(whiteMoveTimePicker, expectedValue: "1s", named: "engine demo white move-time picker")
         try waitForGameBoardState(containing: "White move time: 1s", in: app, named: "engine demo updated move time")
