@@ -7,6 +7,10 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+No unreleased changes.
+
+## 1.1.0 - 2026-07-02
+
 ### Added
 
 - Added an Engine vs Engine game mode that starts paused and lets the user run
@@ -32,6 +36,9 @@ for a release. Tagged releases use dated version headings.
   next engine thinks.
 - Changed new games to start with the Sashite Merida piece set on the Classic
   Green board theme.
+- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.4 so the demo
+  consumes the upstreamed Apple Silicon NNUE fix from the current public
+  package release.
 
 ### Fixed
 
