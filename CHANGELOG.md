@@ -5,6 +5,14 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
+## 1.1.3 - 2026-07-05
+
+### Fixed
+
+- Updated the Arasan engine dependency to `ArasanEmbedded` 1.0.6 so the demo
+  consumes Arasan's upstream mate-distance-pruning root-cause fix for rare
+  debug assertion crashes during engine-vs-engine play.
+
 ## 1.1.2 - 2026-07-02
 
 ### Changed
