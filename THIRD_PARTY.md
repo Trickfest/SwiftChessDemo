@@ -31,6 +31,7 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
     GPLv3 license text and corresponding source information required by GPLv3.
 - ArasanEmbedded
   - Upstream: https://github.com/Trickfest/ArasanEmbedded
+  - Minimum and resolved release: `1.1.0`
   - Product: `ArasanEmbedded`
   - License: MIT License in the package's `LICENSE`
   - Includes selected Arasan engine source, distributed under Arasan's

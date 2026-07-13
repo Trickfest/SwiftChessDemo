@@ -1,10 +1,7 @@
 name: SwiftChessDemo CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,30 +17,25 @@ jobs:
         uses: actions/checkout@v7
         with:
           path: SwiftChessDemo
+          persist-credentials: false
 
       - name: Check out SwiftChessTools
         uses: actions/checkout@v7
         with:
           repository: Trickfest/SwiftChessTools
           path: SwiftChessTools
+          persist-credentials: false
 
       - name: Check out StockfishEmbedded
         uses: actions/checkout@v7
         with:
           repository: Trickfest/StockfishEmbedded
           path: StockfishEmbedded
+          persist-credentials: false
 
       - name: Download Stockfish NNUE weights
         run: StockfishEmbedded/Scripts/download-nnue.sh
 
-      - name: Run SwiftChessDemo unit tests
+      - name: Run hosted headless checks
         working-directory: SwiftChessDemo
-        run: |
-          xcodebuild -project SwiftChessDemo.xcodeproj \
-            -scheme SwiftChessDemo \
-            -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
-            -derivedDataPath .build/xcode-swiftchessdemo \
-            -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
-            -skip-testing:SwiftChessDemoUITests \
-            test
+        run: Scripts/github-ci.sh

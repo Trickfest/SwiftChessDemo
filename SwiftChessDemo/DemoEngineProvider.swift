@@ -62,9 +62,14 @@ enum EngineMoveTime: Int, CaseIterable, Identifiable, Sendable {
     static let defaultValue: EngineMoveTime = .oneSecond
 
     static func closest(milliseconds: Int) -> EngineMoveTime {
-        let clampedMilliseconds = max(1, milliseconds)
+        guard let minimum = allCases.first, let maximum = allCases.last else {
+            return defaultValue
+        }
+        if milliseconds <= minimum.rawValue { return minimum }
+        if milliseconds >= maximum.rawValue { return maximum }
+
         return allCases.min { lhs, rhs in
-            abs(lhs.rawValue - clampedMilliseconds) < abs(rhs.rawValue - clampedMilliseconds)
+            abs(lhs.rawValue - milliseconds) < abs(rhs.rawValue - milliseconds)
         } ?? defaultValue
     }
 }
@@ -112,7 +117,7 @@ struct EngineSearchRequest: Equatable, Sendable {
         self.fen = fen
         self.sideToMove = sideToMove
         self.moveTimeMilliseconds = max(1, moveTimeMilliseconds)
-        self.multiPVCount = multiPVCount
+        self.multiPVCount = min(256, max(1, multiPVCount))
         self.safetyTimeoutSeconds = max(
             1,
             safetyTimeoutSeconds ?? Self.defaultSafetyTimeoutSeconds(for: self.moveTimeMilliseconds)
@@ -120,7 +125,11 @@ struct EngineSearchRequest: Equatable, Sendable {
     }
 
     static func defaultSafetyTimeoutSeconds(for moveTimeMilliseconds: Int) -> Int {
-        ((max(1, moveTimeMilliseconds) + 999) / 1_000) + safetyTimeoutGraceSeconds
+        let positiveMilliseconds = max(1, moveTimeMilliseconds)
+        let wholeSeconds = positiveMilliseconds / 1_000
+        let roundedSeconds = wholeSeconds + (positiveMilliseconds.isMultiple(of: 1_000) ? 0 : 1)
+        let (timeout, overflowed) = roundedSeconds.addingReportingOverflow(safetyTimeoutGraceSeconds)
+        return overflowed ? Int.max : timeout
     }
 }
 

@@ -9,171 +9,57 @@
 //
 
 import ArasanEmbedded
-import Foundation
 import ChessUCI
 
-/// Owns the embedded Arasan process and UCI search lifecycle.
-///
-/// The game view model decides what engine output means for the app. This
-/// provider only serializes searches, sends UCI commands, parses engine lines,
-/// suppresses cancelled analysis output, and reports typed events.
+/// Arasan transport adapter used by the shared provider session.
+private final class ArasanEngineTransport: EmbeddedEngineTransport, @unchecked Sendable {
+    private let engine: ArasanEngine
+
+    init(lineHandler: @escaping @Sendable (String) -> Void) throws {
+        let engine = ArasanEngine(lineHandler: lineHandler)
+        try engine.start()
+        self.engine = engine
+    }
+
+    nonisolated func sendCommand(_ command: String) {
+        engine.sendCommand(command)
+    }
+
+    nonisolated func stop() {
+        engine.stop()
+    }
+}
+
+/// Owns Arasan through the app's shared embedded-engine UCI lifecycle.
 @MainActor
 final class ArasanMoveProvider: DemoEngineProvider {
-    private let eventHandler: DemoEngineEventHandler
-    private var engine: ArasanEngine?
-    private var activeRequest: EngineSearchRequest?
-    private var queuedSearchRequest: EngineSearchRequest?
-    private var isIgnoringActiveAnalysisOutput = false
-    private var isWaitingForBestMoveAfterTimeout = false
-    private var engineInstanceID = UUID()
-    private var searchToken = UUID()
-    private var timeoutTask: Task<Void, Never>?
-    private var timeoutStopTask: Task<Void, Never>?
+    private let session: EmbeddedEngineProviderSession
 
     init(eventHandler: @escaping DemoEngineEventHandler) {
-        self.eventHandler = eventHandler
+        session = EmbeddedEngineProviderSession(
+            engineKind: .arasan,
+            startupSequence: .transportSendsUCIAndReady,
+            lifecycleCoordinator: .shared,
+            transportFactory: { try ArasanEngineTransport(lineHandler: $0) },
+            eventHandler: eventHandler
+        )
     }
 
     let engineKind: DemoEngineKind = .arasan
-
-    var activePurpose: EngineSearchPurpose? {
-        activeRequest?.purpose
-    }
-
-    var activeFEN: String? {
-        activeRequest?.fen
-    }
-
-    var isBusy: Bool {
-        activeRequest != nil
-    }
+    var activePurpose: EngineSearchPurpose? { session.activePurpose }
+    var activeFEN: String? { session.activeFEN }
+    var isBusy: Bool { session.isBusy }
 
     func startOrQueueSearch(_ request: EngineSearchRequest) {
-        guard request.engineKind == engineKind else { return }
-
-        guard let activeRequest else {
-            startSearch(request)
-            return
-        }
-
-        if activeRequest.purpose.isAnalysis {
-            cancelAnalysisSearch(queueReplacement: request)
-        }
+        session.startOrQueueSearch(request)
     }
 
     func cancelAnalysisSearch(queueReplacement: EngineSearchRequest?) {
-        if activeRequest?.purpose.isAnalysis == true {
-            queuedSearchRequest = queueReplacement
-            isIgnoringActiveAnalysisOutput = true
-            engine?.sendCommand(UCICommand.stop.string)
-        } else if let queueReplacement {
-            if activeRequest == nil {
-                startSearch(queueReplacement)
-            } else {
-                queuedSearchRequest = queueReplacement
-            }
-        }
+        session.cancelAnalysisSearch(queueReplacement: queueReplacement)
     }
 
     func stop() {
-        searchToken = UUID()
-        activeRequest = nil
-        queuedSearchRequest = nil
-        isIgnoringActiveAnalysisOutput = false
-        isWaitingForBestMoveAfterTimeout = false
-        engineInstanceID = UUID()
-        timeoutTask?.cancel()
-        timeoutTask = nil
-        timeoutStopTask?.cancel()
-        timeoutStopTask = nil
-
-        let engine = engine
-        self.engine = nil
-        engine?.stop()
-    }
-
-    private func startSearch(_ request: EngineSearchRequest) {
-        guard request.engineKind == engineKind else { return }
-
-        activeRequest = request
-        queuedSearchRequest = nil
-        isIgnoringActiveAnalysisOutput = false
-        isWaitingForBestMoveAfterTimeout = false
-        searchToken = UUID()
-        timeoutTask?.cancel()
-        timeoutStopTask?.cancel()
-
-        guard let engine = ensureEngineStarted(for: request) else { return }
-
-        engine.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
-        engine.sendCommand(UCICommand.isReady.string)
-        engine.sendCommand(UCICommand.newGame.string)
-        engine.sendCommand(UCICommand.position(.fen(request.fen)).string)
-        engine.sendCommand(UCICommand.go(.moveTime(milliseconds: request.moveTimeMilliseconds)).string)
-
-        startTimeout(token: searchToken)
-    }
-
-    private func ensureEngineStarted(for request: EngineSearchRequest) -> ArasanEngine? {
-        if let engine {
-            return engine
-        }
-
-        let parser = UCIParser()
-        let engineInstanceID = UUID()
-        self.engineInstanceID = engineInstanceID
-        let engine = ArasanEngine(lineHandler: { [weak self] line in
-            let parsedLine = parser.parse(line)
-            Task { @MainActor [weak self] in
-                self?.receiveParsedLine(parsedLine, engineInstanceID: engineInstanceID)
-            }
-        })
-
-        do {
-            try engine.start()
-        } catch {
-            let queuedRequest = finishCurrentSearch()
-            eventHandler(.failure(message: error.localizedDescription, request: request))
-            startQueuedSearchIfStillIdle(queuedRequest)
-            return nil
-        }
-
-        self.engine = engine
-        return engine
-    }
-
-    private func receiveParsedLine(_ output: UCIParsedLine, engineInstanceID: UUID) {
-        guard engineInstanceID == self.engineInstanceID else { return }
-        guard let request = activeRequest else { return }
-
-        if isIgnoringActiveAnalysisOutput, request.purpose.isAnalysis {
-            if case .bestMove = output {
-                startQueuedSearchIfStillIdle(finishCurrentSearch())
-            }
-            return
-        }
-
-        if case .bestMove = output {
-            let queuedRequest = finishCurrentSearch()
-            eventHandler(.output(output, request: request))
-            startQueuedSearchIfStillIdle(queuedRequest)
-            return
-        }
-
-        eventHandler(.output(output, request: request))
-    }
-
-    private func startTimeout(token: UUID) {
-        let timeoutSeconds = Self.safetyTimeoutSeconds(for: activeRequest)
-        timeoutTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(timeoutSeconds))
-            } catch {
-                return
-            }
-
-            self?.handleTimeout(token: token)
-        }
+        session.stop()
     }
 
     /// Returns the app-side safety timeout for a search request.
@@ -182,69 +68,5 @@ final class ArasanMoveProvider: DemoEngineProvider {
             ?? EngineSearchRequest.defaultSafetyTimeoutSeconds(
                 for: EngineMoveTime.defaultValue.rawValue
             )
-    }
-
-    private func handleTimeout(token: UUID) {
-        guard token == searchToken, let request = activeRequest else { return }
-        timeoutTask?.cancel()
-        timeoutTask = nil
-        isWaitingForBestMoveAfterTimeout = true
-        eventHandler(.timeout(request))
-        engine?.sendCommand(UCICommand.stop.string)
-        startBestMoveAfterStopTimeout(token: token)
-    }
-
-    private func startBestMoveAfterStopTimeout(token: UUID) {
-        timeoutStopTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(3))
-            } catch {
-                return
-            }
-
-            self?.handleBestMoveAfterStopTimeout(token: token)
-        }
-    }
-
-    private func handleBestMoveAfterStopTimeout(token: UUID) {
-        guard token == searchToken,
-              let request = activeRequest,
-              isWaitingForBestMoveAfterTimeout
-        else {
-            return
-        }
-
-        let queuedRequest = finishCurrentSearch()
-        discardEngineAfterUnresponsiveSearch()
-        eventHandler(.timeoutWithoutBestMove(request))
-        startQueuedSearchIfStillIdle(queuedRequest)
-    }
-
-    private func finishCurrentSearch() -> EngineSearchRequest? {
-        activeRequest = nil
-        isIgnoringActiveAnalysisOutput = false
-        isWaitingForBestMoveAfterTimeout = false
-        searchToken = UUID()
-        timeoutTask?.cancel()
-        timeoutTask = nil
-        timeoutStopTask?.cancel()
-        timeoutStopTask = nil
-
-        let request = queuedSearchRequest
-        queuedSearchRequest = nil
-        return request
-    }
-
-    private func discardEngineAfterUnresponsiveSearch() {
-        let engine = engine
-        self.engine = nil
-        engineInstanceID = UUID()
-
-        engine?.stop()
-    }
-
-    private func startQueuedSearchIfStillIdle(_ request: EngineSearchRequest?) {
-        guard let request, activeRequest == nil else { return }
-        startSearch(request)
     }
 }

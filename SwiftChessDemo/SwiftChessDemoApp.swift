@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -13,7 +13,7 @@ import SwiftUI
 /// Application entry point for the demo.
 ///
 /// This app intentionally keeps the root scene simple so the teaching focus
-/// stays on how the three third-party libraries are wired together in the
+/// stays on how the chess packages and embedded engines are wired together in the
 /// feature views.
 @main
 struct SwiftChessDemoApp: App {

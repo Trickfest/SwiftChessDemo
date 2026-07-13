@@ -18,6 +18,8 @@ struct GameView: View {
     @Environment(\.dismiss) private var dismiss
     /// Chooses a compact or regular display-controls layout without duplicating controls.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Switches dense control rows to vertical layouts at accessibility text sizes.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Owns the game logic and engine integration for this screen.
     @StateObject private var viewModel: GameViewModel
     /// Last measured board area width, used to keep the board and evaluation bar in sync.
@@ -25,7 +27,10 @@ struct GameView: View {
 
     private static let regularMaxBoardAreaWidth: CGFloat = 720
     private static let compactMaxBoardAreaWidth: CGFloat = 620
-    private static let verticalEvaluationBarWidth: CGFloat = 28
+    // Leave enough room for signed scores such as "+0.7" after the reusable
+    // bar applies its capsule padding. A narrower bar truncates the label on
+    // regular-width devices even though the board has ample horizontal room.
+    private static let verticalEvaluationBarWidth: CGFloat = 44
     private static let horizontalEvaluationBarHeight: CGFloat = 26
     private static let regularEvaluationSpacing: CGFloat = 10
     private static let compactEvaluationSpacing: CGFloat = 8
@@ -64,7 +69,7 @@ struct GameView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button {
-                    if viewModel.isGameOngoing {
+                    if viewModel.showsResignAction {
                         viewModel.requestResignConfirmation()
                     } else {
                         dismiss()
@@ -81,6 +86,10 @@ struct GameView: View {
         .onDisappear {
             // Always shut down the engine when leaving the screen.
             viewModel.cleanup()
+        }
+        .onChange(of: viewModel.moveAnnouncement) { _, announcement in
+            guard let announcement else { return }
+            AccessibilityNotification.Announcement(announcement.message).post()
         }
         .alert(item: $viewModel.activeAlert) { alert in
             switch alert {
@@ -237,14 +246,17 @@ struct GameView: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .overlay(alignment: .topLeading) {
-                // Separate state marker keeps board assertions independent
-                // from visual board rendering.
-                Color.clear
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Game board")
-                    .accessibilityIdentifier("Game.boardState")
-                    .accessibilityValue(boardAccessibilityValue)
-                    .allowsHitTesting(false)
+                if viewModel.showsUITestDiagnostics {
+                    // Separate state marker keeps UI-test assertions independent
+                    // from visual board rendering without adding a production
+                    // VoiceOver navigation stop.
+                    Color.clear
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Game board diagnostics")
+                        .accessibilityIdentifier("Game.boardState")
+                        .accessibilityValue(boardAccessibilityValue)
+                        .allowsHitTesting(false)
+                }
             }
     }
 
@@ -274,6 +286,7 @@ struct GameView: View {
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Move time: \(viewModel.engineMoveTime.displayName), "
             + "Engine: \(viewModel.selectedEngineKind.displayName), "
+            + "Evaluation engine: \(viewModel.evaluationEngineKind?.displayName ?? "None"), "
             + "Engine status: \(viewModel.engineActivity.accessibilityValue), "
             + engineDemoAccessibilityValue
             + viewModel.scenarioAccessibilityValue
@@ -307,14 +320,16 @@ struct GameView: View {
                 moveListSection
             }
 
-            Button {
-                viewModel.requestResignConfirmation()
-            } label: {
-                Label("Resign", systemImage: "flag")
-                    .frame(maxWidth: .infinity)
+            if viewModel.showsResignAction {
+                Button {
+                    viewModel.requestResignConfirmation()
+                } label: {
+                    Label("Resign", systemImage: "flag")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("Game.resignButton")
             }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier("Game.resignButton")
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -345,9 +360,16 @@ struct GameView: View {
 
     private var compactDisplayOptions: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                pieceSetControl
-                boardThemeControl
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    pieceSetControl
+                    boardThemeControl
+                }
+            } else {
+                HStack(spacing: 10) {
+                    pieceSetControl
+                    boardThemeControl
+                }
             }
 
             if !viewModel.isEngineDemoMode {
@@ -356,15 +378,24 @@ struct GameView: View {
                 engineSelectionControl
             }
 
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 8) {
                     coordinateLabelsToggle
                     gameStatusToggle
-                }
-
-                HStack(spacing: 10) {
                     moveListToggle
                     evaluationBarToggle
+                }
+            } else {
+                VStack(spacing: 8) {
+                    HStack(spacing: 10) {
+                        coordinateLabelsToggle
+                        gameStatusToggle
+                    }
+
+                    HStack(spacing: 10) {
+                        moveListToggle
+                        evaluationBarToggle
+                    }
                 }
             }
 
@@ -377,29 +408,18 @@ struct GameView: View {
     private var engineDemoControlsSection: some View {
         panelSection("Engine Demo") {
             VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        viewModel.toggleEngineDemoPlayback()
-                    } label: {
-                        Label(
-                            viewModel.engineDemoPrimaryControlTitle,
-                            systemImage: engineDemoPrimaryControlSystemImage
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 34)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 10) {
+                            engineDemoPrimaryButton
+                            engineDemoStepButton
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            engineDemoPrimaryButton
+                            engineDemoStepButton
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(engineDemoPrimaryControlIsDisabled)
-                    .accessibilityIdentifier("Game.engineDemoPlayPauseButton")
-
-                    Button {
-                        viewModel.stepEngineDemo()
-                    } label: {
-                        Label("Step", systemImage: "forward.end")
-                            .frame(maxWidth: .infinity, minHeight: 34)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!viewModel.canStepEngineDemo)
-                    .accessibilityIdentifier("Game.engineDemoStepButton")
                 }
 
                 engineDemoPacingControl
@@ -408,6 +428,35 @@ struct GameView: View {
                 engineDemoStressControls
             }
         }
+    }
+
+    /// Primary demo action, split out so accessibility sizes can stack the button row.
+    private var engineDemoPrimaryButton: some View {
+        Button {
+            viewModel.toggleEngineDemoPlayback()
+        } label: {
+            Label(
+                viewModel.engineDemoPrimaryControlTitle,
+                systemImage: engineDemoPrimaryControlSystemImage
+            )
+            .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(engineDemoPrimaryControlIsDisabled)
+        .accessibilityIdentifier("Game.engineDemoPlayPauseButton")
+    }
+
+    /// One-move demo action paired with the primary playback control.
+    private var engineDemoStepButton: some View {
+        Button {
+            viewModel.stepEngineDemo()
+        } label: {
+            Label("Step", systemImage: "forward.end")
+                .frame(maxWidth: .infinity, minHeight: 34)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!viewModel.canStepEngineDemo)
+        .accessibilityIdentifier("Game.engineDemoStepButton")
     }
 
     private var engineDemoPacingControl: some View {
@@ -594,8 +643,8 @@ struct GameView: View {
             Text(viewModel.engineActivity.message ?? "")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(Color.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
 
             if viewModel.engineActivity.showsProgress {
                 ProgressView()
@@ -831,8 +880,8 @@ struct GameView: View {
 
                 Text(value)
                     .font(.caption)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -850,8 +899,8 @@ struct GameView: View {
             HStack(spacing: 8) {
                 Label(title, systemImage: systemImage)
                     .font(.caption)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.78)
 
                 Spacer(minLength: 6)
 

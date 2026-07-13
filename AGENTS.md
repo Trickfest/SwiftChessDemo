@@ -14,6 +14,11 @@ and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
 parent folder does not need to be a Git repo. `ArasanEmbedded` is resolved by
 Swift Package Manager from its public GitHub repository.
 
+The supported development host is an Apple-silicon Mac with Xcode 26. The app
+uses Swift 6 language mode and targets iOS 26. Arasan's current source snapshot
+is arm64-only, so do not treat
+an x86_64 simulator build failure as an app regression.
+
 ## Setup & Required Assets
 Stockfish NNUE weights are required to run the engine. Initialize the sibling
 `StockfishEmbedded` checkout after clone:
@@ -24,8 +29,11 @@ Keep downloaded NNUE files out of commits.
 
 ## Build, Test, and Development Commands
 - Xcode: open `SwiftChessDemo.xcodeproj` and run the `SwiftChessDemo` app target.
-- CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug build`
-- CLI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
+- CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+- Comprehensive local validation: `Scripts/validate.sh`
+- Targeted CLI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
+- Hosted headless checks: `Scripts/github-ci.sh`
+- Optional manual GitHub Actions run: `Scripts/run-github-ci.sh [branch-or-tag]`
 
 ## Coding Style & Naming Conventions
 - Use 4-space indentation and follow Swift API Design Guidelines.
@@ -46,14 +54,31 @@ Dependency/license changes must preserve the distinction between MIT-licensed
 demo source and GPL-covered Stockfish-linked distribution, and must update
 `THIRD_PARTY.md`.
 
+Repository releases are source-only. Do not add prebuilt app, framework,
+library, or engine artifacts to a release or CI workflow; consumers build the
+source dependencies locally.
+
 ## Testing Guidelines
+- Treat `Scripts/validate.sh` as the expected local completion and release gate.
+  It runs the app-hosted unit tests, generic iOS Release build checks, and the
+  complete simulator UI-test target. Override the simulator when necessary with
+  `SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION`.
+- GitHub Actions is optional, manual-only, and nonblocking. It does not run for
+  pushes or pull requests. The workflow invokes `Scripts/github-ci.sh`, which
+  deliberately skips simulator UI tests while retaining the app-hosted unit
+  tests and Release build verification.
+- `Scripts/run-github-ci.sh` dispatches only a branch or tag already published
+  to GitHub. It does not commit or push. A missing or failed hosted run,
+  including one GitHub cannot start because Actions credits are unavailable,
+  is not evidence that the code failed local validation.
 - Run the SwiftChessDemo tests after changing setup-screen, game-screen,
   scenario loading, scenario index validation, move-provider behavior, in-game
   piece-set selection, in-game board-theme selection, player-side setup, or
   move-flow behavior.
 - The shared scheme includes app-hosted unit tests and UI tests. The unit tests
-  cover scenario loading, scenario-index validation failures, and deterministic
-  move-provider behavior.
+  cover scenario loading, scenario-index validation failures, deterministic
+  move-provider behavior, game-view-model policy, and embedded-engine session
+  ordering.
 - The move-flow UI tests cover four full moves from both white and black
   perspectives. They launch named scenarios in `testDrivesWhite` or
   `testDrivesBlack` mode so engine-side moves are deterministic and not coupled

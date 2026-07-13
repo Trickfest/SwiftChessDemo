@@ -1,5 +1,5 @@
 //
-// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and StockfishEmbedded.
+// SwiftChessDemo provides an iOS SwiftUI chess demo built with SwiftChessTools and embedded engines.
 //
 // See THIRD_PARTY.md for dependency attribution and license details.
 //
@@ -70,78 +70,79 @@ struct ContentView: View {
     var body: some View {
         // NavigationStack enables the push to the game screen.
         NavigationStack {
-            VStack(spacing: 24) {
-                modePicker
+            ScrollView {
+                VStack(spacing: 24) {
+                    modePicker
 
-                if requestedScenario != nil || gameMode == .humanVsEngine {
-                    sidePicker
-                }
+                    if requestedScenario != nil || gameMode == .humanVsEngine {
+                        sidePicker
+                    }
 
-                if let requestedScenario {
-                    Text(requestedScenario.title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("Setup.scenarioTitle")
-                }
-
-                if let scenarioLoadingError {
-                    Text("Scenario load error")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .accessibilityIdentifier("Setup.scenarioError")
-
-                    Text(scenarioLoadingError.localizedDescription)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .accessibilityIdentifier("Setup.scenarioErrorDetail")
-                }
-
-                if let scenarioIndexValidationResult {
-                    switch scenarioIndexValidationResult {
-                    case .success(let summary):
-                        Text("Scenario index valid")
+                    if let requestedScenario {
+                        Text(requestedScenario.title)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("Setup.scenarioIndexStatus")
+                            .accessibilityIdentifier("Setup.scenarioTitle")
+                    }
 
-                        Text(summary.displayText)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .accessibilityIdentifier("Setup.scenarioIndexDetail")
-
-                    case .failure(let error):
-                        Text("Scenario index error")
+                    if let scenarioLoadingError {
+                        Text("Scenario load error")
                             .font(.caption)
                             .foregroundStyle(.red)
-                            .accessibilityIdentifier("Setup.scenarioIndexStatus")
+                            .accessibilityIdentifier("Setup.scenarioError")
 
-                        Text(error.localizedDescription)
+                        Text(scenarioLoadingError.localizedDescription)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                            .accessibilityIdentifier("Setup.scenarioIndexDetail")
+                            .accessibilityIdentifier("Setup.scenarioErrorDetail")
                     }
-                }
 
-                // The main transition into gameplay; passes config into GameView.
-                NavigationLink("Start Game") {
-                    GameView(
-                        playerColor: requestedScenario?.initialPerspective ?? playerSide.pieceColor,
-                        pieceSet: .sashiteMerida,
-                        boardTheme: .classicGreen,
-                        gameMode: requestedScenario == nil ? gameMode : .humanVsEngine,
-                        engineDemoConfiguration: engineDemoConfiguration,
-                        scenario: requestedScenario
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(scenarioLoadingError != nil || scenarioIndexValidationError != nil)
+                    if let scenarioIndexValidationResult {
+                        switch scenarioIndexValidationResult {
+                        case .success(let summary):
+                            Text("Scenario index valid")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("Setup.scenarioIndexStatus")
 
-                Spacer()
+                            Text(summary.displayText)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .accessibilityIdentifier("Setup.scenarioIndexDetail")
+
+                        case .failure(let error):
+                            Text("Scenario index error")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .accessibilityIdentifier("Setup.scenarioIndexStatus")
+
+                            Text(error.localizedDescription)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .accessibilityIdentifier("Setup.scenarioIndexDetail")
+                        }
+                    }
+
+                    // The main transition into gameplay; passes config into GameView.
+                    NavigationLink("Start Game") {
+                        GameView(
+                            playerColor: requestedScenario?.initialPerspective ?? playerSide.pieceColor,
+                            pieceSet: .sashiteMerida,
+                            boardTheme: .classicGreen,
+                            gameMode: requestedScenario == nil ? gameMode : .humanVsEngine,
+                            engineDemoConfiguration: engineDemoConfiguration,
+                            scenario: requestedScenario
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(scenarioLoadingError != nil || scenarioIndexValidationError != nil)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
             }
-            .padding()
             .navigationTitle("Swift Chess Demo")
         }
     }

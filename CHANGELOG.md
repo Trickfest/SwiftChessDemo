@@ -5,6 +5,52 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
+## Unreleased
+
+## 1.2.0 - 2026-07-13
+
+### Added
+
+- Added deterministic provider-session tests for Stockfish and Arasan UCI
+  handshake ordering, readiness barriers, and analysis replacement.
+- Added a UI test that moves through ChessUI's accessible board squares so the
+  board-to-view-model integration path is covered directly.
+- Added a live Arasan-versus-Arasan UI regression test that follows six plies
+  on a physical device, covering the startup path that previously terminated.
+- Added dedicated light, dark, and tinted app-icon artwork.
+
+### Changed
+
+- Unified the two embedded-engine providers behind one shared lifecycle that
+  preserves output ordering, waits for `uciok` and the correct `readyok`, and
+  coordinates blocking native teardown away from the main actor.
+- Disabled iPad multiwindow creation because each embedded engine supports one
+  active instance per linked package copy.
+- Improved accessibility with external-move announcements, adaptive
+  accessibility-size control layouts, scrollable setup content, and UI-test
+  diagnostics that no longer appear in the production VoiceOver tree.
+- Hid Resign outside active human-vs-engine games and updated current project,
+  source-only release, platform, dependency, and CI documentation.
+- Made GitHub Actions optional and manually dispatched, moved the hosted
+  headless checks into `Scripts/github-ci.sh`, and added a no-push dispatcher
+  plus `Scripts/validate.sh` as the comprehensive local gate.
+- Adopted Swift 6 language mode for the app target under the existing Xcode 26
+  actor-isolation settings. The XCTest targets remain in Swift 5 mode because
+  their main-actor test classes override nonisolated XCTestCase initializers.
+
+### Fixed
+
+- Retried an outstanding opponent turn when the user switches engines after an
+  unrecoverable engine failure.
+- Removed the obsolete ChessUI `setFEN` game-copy workaround while preserving
+  full game identity, history, repetition state, and draw claims.
+- Hardened extreme engine move-time, MultiPV, deterministic-suggestion, and
+  test-delay inputs against overflow or invalid scheduling values.
+- Updated `ArasanEmbedded` to 1.1.0, preventing physical Apple devices from
+  terminating during Arasan startup while preserving upstream initialization.
+- Aligned the built marketing version with 1.2.0 and stopped bundling the
+  scenario authoring guide as an app resource.
+
 ## 1.1.3 - 2026-07-05
 
 ### Fixed

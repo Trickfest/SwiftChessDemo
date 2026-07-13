@@ -14,6 +14,10 @@ Stockfish-linked app requires GPLv3 compliance. The app can also use the
 permissively licensed `ArasanEmbedded` Swift package as a second embedded engine.
 See `LICENSE`, `LICENSES/`, and `THIRD_PARTY.md` for details.
 
+Releases are source-only. This repository does not publish a prebuilt app,
+framework, library, or other binary artifact; users build the sibling source
+checkouts and Swift package dependency locally.
+
 ## Screenshots
 
 The demo is designed to show the same app-owned chess experience adapting
@@ -28,6 +32,11 @@ between regular-width iPad layouts and compact iPhone layouts.
 </p>
 
 ## Setup
+
+Development requires Xcode 26 on an Apple-silicon Mac. The app uses Swift 6
+language mode and targets iOS 26. The current Arasan source snapshot
+intentionally supports arm64 only, so an
+x86_64 simulator build is not a supported configuration.
 
 Public checkout layout:
 
@@ -79,10 +88,10 @@ How it all fits together:
 - SwiftChessDemo owns app policy: view-model state, engine timing, move-provider
   selection, user display preferences, recoverable engine status feedback,
   error handling, and when validated moves should mutate the game.
-- `StockfishMoveProvider` wraps the embedded Stockfish lifecycle and serialized
-  UCI searches for live play.
-- `ArasanMoveProvider` wraps the embedded Arasan lifecycle and the same
-  serialized UCI search contract for live play.
+- `StockfishMoveProvider` and `ArasanMoveProvider` adapt their native wrappers
+  to one shared app-local session that owns ordered output delivery, UCI
+  handshake/readiness barriers, serialized searches, bounded timeouts, and
+  coordinated off-main teardown.
 - `ScenarioReplayMoveProvider` supplies deterministic non-live-engine moves for
   scenario replay and scenario-backed tests.
 - The sibling `../StockfishEmbedded` project supplies engine moves over the UCI
@@ -178,12 +187,13 @@ Key files to read:
 - `SwiftChessDemo/EngineDemoConfiguration.swift`: value types that describe
   engine-vs-engine mode, per-side engine/move-time settings, pacing, and
   optional deterministic stress randomization.
-- `SwiftChessDemo/StockfishMoveProvider.swift`: embedded Stockfish lifecycle,
-  serialized `go movetime` search requests, UCI command formatting/parsing,
-  safety-timeout `stop` handling, and cancelled suggestion-output handling.
-- `SwiftChessDemo/ArasanMoveProvider.swift`: embedded Arasan lifecycle,
-  serialized `go movetime` search requests, UCI command formatting/parsing,
-  safety-timeout `stop` handling, and cancelled suggestion-output handling.
+- `SwiftChessDemo/StockfishMoveProvider.swift`: thin Stockfish transport adapter
+  and app-local facade over the shared embedded-engine session.
+- `SwiftChessDemo/ArasanMoveProvider.swift`: thin Arasan transport adapter and
+  app-local facade over the shared embedded-engine session.
+- `SwiftChessDemo/EmbeddedEngineProviderSession.swift`: shared handshake,
+  readiness, search serialization, timeout, ordered-output, and asynchronous
+  native teardown policy for both embedded engines.
 - `SwiftChessDemo/DemoEngineProvider.swift`: app-local engine abstraction and
   shared request/event models used by live engine providers.
 - `SwiftChessDemo/GameScenario.swift`: scenario-file loading and PGN validation
@@ -192,8 +202,8 @@ Key files to read:
   validation used to catch scenario-resource drift.
 - `SwiftChessDemo/GameMoveProvider.swift`: deterministic move-provider
   abstraction used by scenario replay and scenario-backed UI tests.
-- `SwiftChessDemo/Scenarios/`: checked-in scenario index, authoring guide, JSON
-  definitions, and PGN fixtures.
+- `SwiftChessDemo/Scenarios/`: checked-in scenario index, JSON definitions, and
+  PGN fixtures. `Docs/SCENARIOS.md` is the authoring guide.
 - `SwiftChessDemoTests/GameScenarioUnitTests.swift`: fast unit coverage for
   scenario loading, index validation, deterministic move-provider behavior,
   live-analysis refreshes, and engine-vs-engine playback/restart/stress
@@ -206,23 +216,30 @@ Key files to read:
   flows from both white and black perspectives.
 
 Automated tests:
-- Run the suite from this repo root:
+- Run the expected comprehensive local gate from this repo root:
 
 ```sh
-xcodebuild -project SwiftChessDemo.xcodeproj \
-  -scheme SwiftChessDemo \
-  -configuration Debug \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath .build/xcode-swiftchessdemo \
-  -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages \
-  test
+Scripts/validate.sh
 ```
 
-- GitHub Actions runs the app-hosted unit tests after checking out
-  `SwiftChessDemo`, `SwiftChessTools`, and `StockfishEmbedded` as siblings,
-  resolving `ArasanEmbedded`, and downloading the Stockfish NNUE file. The full
-  UI suite is the local release gate because hosted simulator UI tests are
-  slower and more environment sensitive.
+- `Scripts/validate.sh` runs the app-hosted unit tests, the generic iOS Release
+  build and its built-product assertions, and the complete simulator UI-test
+  target. Set `SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION` to use another installed
+  arm64 simulator when needed.
+- GitHub Actions is optional, manual-only, and does not run for pushes or pull
+  requests. Dispatch it with `Scripts/run-github-ci.sh [branch-or-tag]`; the
+  selected ref and workflow must already be pushed because the helper never
+  commits or pushes.
+- The hosted workflow checks out `SwiftChessDemo`, `SwiftChessTools`, and
+  `StockfishEmbedded` as siblings, resolves `ArasanEmbedded`, downloads the
+  Stockfish NNUE file, and invokes `Scripts/github-ci.sh`. That hosted script
+  runs the app-hosted unit tests without simulator UI tests and verifies the
+  generic iOS Release build. The UI suite remains local because hosted
+  simulator UI tests are slower and more environment sensitive.
+- Hosted validation is supplemental and nonblocking. A missing or failed run,
+  including one GitHub cannot start because Actions credits are unavailable,
+  does not mean the code failed validation; `Scripts/validate.sh` is the local
+  gate.
 - The shared local scheme includes both fast scenario unit tests and full UI
   tests. The unit tests run inside the demo app host so `Bundle.main` loads the
   same bundled scenarios the app uses at runtime.
@@ -272,7 +289,7 @@ Scenario files:
     scenario provide Black replies.
   - `testDrivesBlack`: expose test-only buttons for Black moves and let the
     scenario provide White replies.
-- See `SwiftChessDemo/Scenarios/README.md` for scenario authoring steps,
+- See `Docs/SCENARIOS.md` for scenario authoring steps,
   index-field expectations, and the manual launch environment variables.
 
 Sibling dependencies:
@@ -284,4 +301,8 @@ Sibling dependencies:
   provides the `ArasanEmbedded` product.
 - The parent folder can be any local directory; it does not need to be a Git
   repo.
+- Because the two sibling dependencies are source checkouts rather than pinned
+  package references, coordinated release notes should record the tested
+  SwiftChessTools and StockfishEmbedded tags. Release those siblings before
+  tagging SwiftChessDemo.
 - Reference details live in `THIRD_PARTY.md`.

@@ -69,6 +69,73 @@ final class SwiftChessDemoUITests: XCTestCase {
         attachScreenshot(from: app, named: "SwiftChessDemo - White four full moves")
     }
 
+    func testChessBoardSquareActionsReachGameViewModel() throws {
+        let app = moveSmokeTestApplication(id: "white-four-move-smoke")
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        let openingPosition = try boardValue(in: app)
+
+        let source = try requireElement(
+            app.descendants(matching: .any)["ChessUI.square.e2"].firstMatch,
+            named: "e2 board square"
+        )
+        let destination = try requireElement(
+            app.descendants(matching: .any)["ChessUI.square.e4"].firstMatch,
+            named: "e4 board square"
+        )
+
+        source.tap()
+        destination.tap()
+
+        let afterUserMove = try waitForBoardTurn(
+            .black,
+            from: openingPosition,
+            in: app,
+            named: "board square e2-e4"
+        )
+        let whiteMove = try requireElement(
+            app.descendants(matching: .any)["ChessUI.moveList.move.1"].firstMatch,
+            named: "board square move-list record"
+        )
+        XCTAssertEqual(whiteMove.value as? String, "e2e4")
+        XCTAssertTrue(whiteMove.label.contains("White e4"))
+        _ = try waitForBoardTurn(
+            .white,
+            from: afterUserMove,
+            in: app,
+            named: "scenario reply to board square move"
+        )
+    }
+
+    func testProductionAccessibilityTreeOmitsBoardDiagnosticMarker() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        XCTAssertFalse(app.descendants(matching: .any)["Game.boardState"].firstMatch.exists)
+        try requireElement(
+            app.descendants(matching: .any)["ChessUI.square.e2"].firstMatch,
+            named: "production e2 board square"
+        )
+    }
+
+    func testBackFromOngoingLiveGameRequiresResignConfirmation() throws {
+        let app = testApplication()
+        app.launch()
+
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try requireElement(app.buttons["Back"].firstMatch, named: "live game back button").tap()
+
+        let alert = try requireElement(
+            app.alerts["Are you sure you want to resign?"].firstMatch,
+            named: "resign confirmation"
+        )
+        try requireElement(alert.buttons["Cancel"].firstMatch, named: "resign cancel button").tap()
+        try requireElement(app.buttons["Back"].firstMatch, named: "game back button after cancellation")
+    }
+
     func testBlackGameFlowCompletesFourFullMoves() throws {
         let app = moveSmokeTestApplication(id: "black-four-move-smoke")
         app.launch()
@@ -108,7 +175,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGamePieceSetPickerSelectsEveryBuiltInSetAndUpdatesBoard() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -134,7 +201,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameBoardThemePickerSelectsEveryBuiltInThemeAndUpdatesBoard() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -160,7 +227,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameEnginePickerSelectsLiveEngineAndUpdatesBoardState() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         app.launch()
 
@@ -171,6 +238,11 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "evaluation bar"
         )
         try waitForEvaluationValueIsAvailable(evaluationBar, named: "initial engine evaluation")
+        try waitForGameBoardState(
+            containing: "Evaluation engine: Stockfish",
+            in: app,
+            named: "initial Stockfish output"
+        )
 
         let picker = try scrollUntilHittable(
             app.descendants(matching: .any)["Game.enginePicker"].firstMatch,
@@ -185,17 +257,27 @@ final class SwiftChessDemoUITests: XCTestCase {
 
         try waitForElementValue(picker, expectedValue: "Arasan", named: "game engine picker")
         try waitForGameBoardState(containing: "Engine: Arasan", in: app, named: "selected engine")
-        try waitForEvaluationValueIsAvailable(evaluationBar, named: "Arasan engine evaluation")
+        try waitForGameBoardState(
+            containing: "Evaluation engine: Arasan",
+            in: app,
+            named: "Arasan engine output",
+            timeout: 15
+        )
 
         try select("Stockfish", from: picker, in: app)
 
         try waitForElementValue(picker, expectedValue: "Stockfish", named: "game engine picker")
         try waitForGameBoardState(containing: "Engine: Stockfish", in: app, named: "restored engine")
-        try waitForEvaluationValueIsAvailable(evaluationBar, named: "restored Stockfish evaluation")
+        try waitForGameBoardState(
+            containing: "Evaluation engine: Stockfish",
+            in: app,
+            named: "restored Stockfish output",
+            timeout: 15
+        )
     }
 
     func testEngineDemoModeStartsPausedAndShowsPlaybackControls() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         app.launch()
 
@@ -221,6 +303,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             app.descendants(matching: .any)["Game.engineDemoStepButton"].firstMatch,
             named: "engine demo step button"
         )
+        XCTAssertFalse(app.buttons["Game.resignButton"].exists)
         try requireElement(
             app.descendants(matching: .any)["Game.engineDemoPacingPicker"].firstMatch,
             named: "engine demo pacing picker"
@@ -236,8 +319,76 @@ final class SwiftChessDemoUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["Game.enginePicker"].firstMatch.exists)
     }
 
+    func testArasanVersusArasanEngineDemoCompletesSixLivePlies() throws {
+        let app = testApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
+        app.launch()
+
+        try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try waitForGameBoardState(containing: "Mode: Engine vs Engine", in: app, named: "engine demo mode")
+
+        let whiteEnginePicker = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoWhiteEnginePicker"].firstMatch,
+            named: "White engine picker"
+        )
+        let blackEnginePicker = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoBlackEnginePicker"].firstMatch,
+            named: "Black engine picker"
+        )
+
+        XCTAssertEqual(whiteEnginePicker.value as? String, "Stockfish")
+        XCTAssertEqual(blackEnginePicker.value as? String, "Arasan")
+        try select("Arasan", from: whiteEnginePicker, in: app)
+        try waitForElementValue(whiteEnginePicker, expectedValue: "Arasan", named: "White engine picker")
+        try waitForGameBoardState(containing: "White engine: Arasan", in: app, named: "White Arasan selection")
+        try waitForGameBoardState(containing: "Black engine: Arasan", in: app, named: "Black Arasan selection")
+
+        var position = try boardValue(in: app)
+        try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoPlayPauseButton"].firstMatch,
+            named: "engine demo play button"
+        )
+        .tap()
+        try waitForGameBoardState(containing: "Demo state: Pause", in: app, named: "engine demo playback")
+
+        let expectedPlies: [(mover: String, resultingTurn: FENTurn)] = [
+            ("White", .black),
+            ("Black", .white),
+            ("White", .black),
+            ("Black", .white),
+            ("White", .black),
+            ("Black", .white),
+        ]
+
+        for (index, expectedPly) in expectedPlies.enumerated() {
+            position = try waitForBoardTurn(
+                expectedPly.resultingTurn,
+                from: position,
+                in: app,
+                named: "live Arasan \(expectedPly.mover) ply \(index + 1)"
+            )
+
+            let moveRecord = try requireElement(
+                app.descendants(matching: .any)["ChessUI.moveList.move.\(index + 1)"].firstMatch,
+                named: "live Arasan move-list record \(index + 1)"
+            )
+            XCTAssertTrue(
+                moveRecord.label.contains(expectedPly.mover),
+                "Expected ply \(index + 1) to belong to \(expectedPly.mover); label was \(moveRecord.label)"
+            )
+            XCTAssertEqual(
+                app.state,
+                .runningForeground,
+                "SwiftChessDemo stopped running after live Arasan ply \(index + 1)"
+            )
+        }
+
+        attachScreenshot(from: app, named: "SwiftChessDemo - Arasan versus Arasan six live plies")
+    }
+
     func testGameCoordinateLabelsToggleUpdatesBoardState() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -306,7 +457,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameDisplayOptionsToggleStatusAndMoveList() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
@@ -370,7 +521,7 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testGameEvaluationBarRendersAndToggles() throws {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION"] = "cp:85"
         app.launch()
 
@@ -759,7 +910,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             "white-four-move-smoke",
         ]
 
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_VALIDATE_SCENARIO_INDEX"] = "1"
         app.launch()
 
@@ -917,9 +1068,16 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     private func scenarioTestApplication(id: String) -> XCUIApplication {
-        let app = XCUIApplication()
+        let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_SCENARIO"] = id
         app.launchEnvironment["SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY"] = "0"
+        return app
+    }
+
+    /// Enables app-only diagnostic accessibility state for black-box assertions.
+    private func testApplication() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TESTING"] = "1"
         return app
     }
 

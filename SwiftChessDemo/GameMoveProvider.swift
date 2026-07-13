@@ -73,7 +73,8 @@ final class ScenarioReplayMoveProvider: GameMoveProvider {
     }
 
     func suggestionMoves(for game: Game, maxCount: Int) -> [Move] {
-        guard let testDrivenColor = scenario.playbackMode.testDrivenColor,
+        guard maxCount > 0,
+              let testDrivenColor = scenario.playbackMode.testDrivenColor,
               game.position.state.turn == testDrivenColor
         else {
             return []

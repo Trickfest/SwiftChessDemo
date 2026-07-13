@@ -9,20 +9,16 @@
 /* Begin PBXBuildFile section */
 		013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */; };
 		A5A100000000000000000001 /* ArasanEmbedded in Frameworks */ = {isa = PBXBuildFile; productRef = A5A100000000000000000003 /* ArasanEmbedded */; };
+		BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000004 /* ChessCore */; };
+		BBD7F42030051B6E0044C1DF /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000005 /* ChessUI */; };
+		BBD7F42130051B6E0044C1DF /* ChessUCI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000006 /* ChessUCI */; };
 		C0D10000000000000000000C /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = C0D10000000000000000000D /* ChessUI */; };
-		D4D200000000000000000001 /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000004 /* ChessCore */; };
-		D4D200000000000000000002 /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000005 /* ChessUI */; };
-		D4D200000000000000000007 /* ChessUCI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000006 /* ChessUCI */; };
-	/* End PBXBuildFile section */
+		D4D200000000000000000001 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+		D4D200000000000000000002 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+		D4D200000000000000000007 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+/* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		E53F0AD62BEE4267AD0821E8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
-			proxyType = 1;
-			remoteGlobalIDString = A1F000000000000000000020;
-			remoteInfo = "SFEngine-iOS";
-		};
 		8CAE44A4F81840E29C0B770B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
@@ -44,18 +40,38 @@
 			remoteGlobalIDString = BBE95A3C2F09B47C003C9B73;
 			remoteInfo = SwiftChessDemo;
 		};
+		E53F0AD62BEE4267AD0821E8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
+			proxyType = 1;
+			remoteGlobalIDString = A1F000000000000000000020;
+			remoteInfo = "SFEngine-iOS";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = StockfishEmbedded.xcodeproj; sourceTree = "<group>"; };
 		BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftChessDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D100000000000000000001 /* SwiftChessDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F100000000000000000001 /* SwiftChessDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = StockfishEmbedded.xcodeproj; sourceTree = "<group>"; };
-	/* End PBXFileReference section */
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		D5E300000000000000000001 /* Exceptions for "SwiftChessDemo" folder in "SwiftChessDemo" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BBE95A3C2F09B47C003C9B73 /* SwiftChessDemo */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		BBE95A3F2F09B47C003C9B73 /* SwiftChessDemo */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				D5E300000000000000000001 /* Exceptions for "SwiftChessDemo" folder in "SwiftChessDemo" target */,
+			);
 			path = SwiftChessDemo;
 			sourceTree = "<group>";
 		};
@@ -76,18 +92,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BBD7F42130051B6E0044C1DF /* ChessUCI in Frameworks */,
+				BBD7F42030051B6E0044C1DF /* ChessUI in Frameworks */,
+				BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */,
 				013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */,
 				A5A100000000000000000001 /* ArasanEmbedded in Frameworks */,
-				D4D200000000000000000001 /* ChessCore in Frameworks */,
-				D4D200000000000000000002 /* ChessUI in Frameworks */,
-				D4D200000000000000000007 /* ChessUCI in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		0F07686547624E93BF59F89E /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				D4D200000000000000000001 /* (null) in Frameworks */,
+				D4D200000000000000000002 /* (null) in Frameworks */,
+				D4D200000000000000000007 /* (null) in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,6 +121,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3944A0BA970E4E6DB1D68347 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		98B1DCE8F742402ABA9F1B83 /* Dependencies */ = {
+			isa = PBXGroup;
+			children = (
+				C14C7C944506437DA7F45D71 /* StockfishEmbedded */,
+			);
+			name = Dependencies;
+			sourceTree = "<group>";
+		};
 		BBE95A342F09B47C003C9B73 = {
 			isa = PBXGroup;
 			children = (
@@ -130,14 +158,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		98B1DCE8F742402ABA9F1B83 /* Dependencies */ = {
-			isa = PBXGroup;
-			children = (
-				C14C7C944506437DA7F45D71 /* StockfishEmbedded */,
-			);
-			name = Dependencies;
-			sourceTree = "<group>";
-		};
 		C14C7C944506437DA7F45D71 /* StockfishEmbedded */ = {
 			isa = PBXGroup;
 			children = (
@@ -148,29 +168,21 @@
 			path = ../StockfishEmbedded;
 			sourceTree = "<group>";
 		};
-		3944A0BA970E4E6DB1D68347 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		BBE95A3C2F09B47C003C9B73 /* SwiftChessDemo */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = BBE95A482F09B47D003C9B73 /* Build configuration list for PBXNativeTarget "SwiftChessDemo" */;
-				buildPhases = (
-					BBE95A392F09B47C003C9B73 /* Sources */,
-					BBE95A3A2F09B47C003C9B73 /* Frameworks */,
-					BBE95A3B2F09B47C003C9B73 /* Resources */,
-				);
+			buildPhases = (
+				BBE95A392F09B47C003C9B73 /* Sources */,
+				BBE95A3A2F09B47C003C9B73 /* Frameworks */,
+				BBE95A3B2F09B47C003C9B73 /* Resources */,
+			);
 			buildRules = (
 			);
 			dependencies = (
-				73D91B036EEC49F0AF27C841 /* SFEngine-iOS */,
+				73D91B036EEC49F0AF27C841 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				BBE95A3F2F09B47C003C9B73 /* SwiftChessDemo */,
@@ -185,29 +197,6 @@
 			productName = SwiftChessDemo;
 			productReference = BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */;
 			productType = "com.apple.product-type.application";
-		};
-		E4F100000000000000000006 /* SwiftChessDemoTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = E4F100000000000000000009 /* Build configuration list for PBXNativeTarget "SwiftChessDemoTests" */;
-			buildPhases = (
-				E4F100000000000000000003 /* Sources */,
-				E4F100000000000000000004 /* Frameworks */,
-				E4F100000000000000000005 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				E4F100000000000000000007 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				E4F100000000000000000002 /* SwiftChessDemoTests */,
-			);
-			name = SwiftChessDemoTests;
-			packageProductDependencies = (
-			);
-			productName = SwiftChessDemoTests;
-			productReference = E4F100000000000000000001 /* SwiftChessDemoTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		C0D100000000000000000006 /* SwiftChessDemoUITests */ = {
 			isa = PBXNativeTarget;
@@ -233,7 +222,30 @@
 			productReference = C0D100000000000000000001 /* SwiftChessDemoUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
-	/* End PBXNativeTarget section */
+		E4F100000000000000000006 /* SwiftChessDemoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4F100000000000000000009 /* Build configuration list for PBXNativeTarget "SwiftChessDemoTests" */;
+			buildPhases = (
+				E4F100000000000000000003 /* Sources */,
+				E4F100000000000000000004 /* Frameworks */,
+				E4F100000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E4F100000000000000000007 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				E4F100000000000000000002 /* SwiftChessDemoTests */,
+			);
+			name = SwiftChessDemoTests;
+			packageProductDependencies = (
+			);
+			productName = SwiftChessDemoTests;
+			productReference = E4F100000000000000000001 /* SwiftChessDemoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
 		BBE95A352F09B47C003C9B73 /* Project object */ = {
@@ -246,11 +258,11 @@
 					BBE95A3C2F09B47C003C9B73 = {
 						CreatedOnToolsVersion = 26.0;
 					};
-					E4F100000000000000000006 = {
+					C0D100000000000000000006 = {
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = BBE95A3C2F09B47C003C9B73;
 					};
-					C0D100000000000000000006 = {
+					E4F100000000000000000006 = {
 						CreatedOnToolsVersion = 26.0;
 						TestTargetID = BBE95A3C2F09B47C003C9B73;
 					};
@@ -272,13 +284,13 @@
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BBE95A3E2F09B47C003C9B73 /* Products */;
 			projectDirPath = "";
-			projectRoot = "";
 			projectReferences = (
 				{
 					ProductGroup = 3944A0BA970E4E6DB1D68347 /* Products */;
 					ProjectRef = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
 				},
 			);
+			projectRoot = "";
 			targets = (
 				BBE95A3C2F09B47C003C9B73 /* SwiftChessDemo */,
 				E4F100000000000000000006 /* SwiftChessDemoTests */,
@@ -291,7 +303,7 @@
 		6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */ = {
 			isa = PBXReferenceProxy;
 			fileType = archive.ar;
-			path = libSFEngine-iOS.a;
+			path = "libSFEngine-iOS.a";
 			remoteRef = 8CAE44A4F81840E29C0B770B /* PBXContainerItemProxy */;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
@@ -346,7 +358,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		73D91B036EEC49F0AF27C841 /* SFEngine-iOS */ = {
+		73D91B036EEC49F0AF27C841 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			targetProxy = E53F0AD62BEE4267AD0821E8 /* PBXContainerItemProxy */;
 		};
@@ -361,48 +373,6 @@
 			targetProxy = E4F100000000000000000008 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Trickfest/ArasanEmbedded.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.6;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../SwiftChessTools;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		A5A100000000000000000003 /* ArasanEmbedded */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */;
-			productName = ArasanEmbedded;
-		};
-		D4D200000000000000000004 /* ChessCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ChessCore;
-		};
-		D4D200000000000000000005 /* ChessUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ChessUI;
-		};
-		D4D200000000000000000006 /* ChessUCI */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ChessUCI;
-		};
-		C0D10000000000000000000D /* ChessUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = ChessUI;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		BBE95A462F09B47D003C9B73 /* Debug */ = {
@@ -536,11 +506,12 @@
 				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-					HEADER_SEARCH_PATHS = (
-						"$(inherited)",
-						"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-					);
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
+				);
+				INFOPLIST_FILE = SwiftChessDemo/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -549,20 +520,20 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.2.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lc++",
 				);
-				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = SwiftChessDemo/SwiftChessDemo-Bridging-Header.h;
+				SWIFT_OBJC_BRIDGING_HEADER = "SwiftChessDemo/SwiftChessDemo-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -577,11 +548,12 @@
 				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-					HEADER_SEARCH_PATHS = (
-						"$(inherited)",
-						"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-					);
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
+				);
+				INFOPLIST_FILE = SwiftChessDemo/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -590,21 +562,73 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.2.0;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lc++",
 				);
-				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemo;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = SwiftChessDemo/SwiftChessDemo-Bridging-Header.h;
+				SWIFT_OBJC_BRIDGING_HEADER = "SwiftChessDemo/SwiftChessDemo-Bridging-Header.h";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		C0D10000000000000000000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LVYMXM9579;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SwiftChessDemo;
+			};
+			name = Debug;
+		};
+		C0D10000000000000000000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = LVYMXM9579;
+				ENABLE_TESTING_SEARCH_PATHS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SwiftChessDemo;
 			};
 			name = Release;
 		};
@@ -627,7 +651,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -659,7 +683,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1.0;
+				MARKETING_VERSION = 1.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -672,59 +696,7 @@
 			};
 			name = Release;
 		};
-		C0D10000000000000000000A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
-				ENABLE_TESTING_SEARCH_PATHS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SwiftChessDemo;
-			};
-			name = Debug;
-		};
-		C0D10000000000000000000B /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
-				ENABLE_TESTING_SEARCH_PATHS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MARKETING_VERSION = 1.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = SwiftChessDemo;
-			};
-			name = Release;
-		};
-	/* End XCBuildConfiguration section */
+/* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
 		BBE95A382F09B47C003C9B73 /* Build configuration list for PBXProject "SwiftChessDemo" */ = {
@@ -745,15 +717,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E4F100000000000000000009 /* Build configuration list for PBXNativeTarget "SwiftChessDemoTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				E4F10000000000000000000A /* Debug */,
-				E4F10000000000000000000B /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		C0D100000000000000000009 /* Build configuration list for PBXNativeTarget "SwiftChessDemoUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -763,7 +726,58 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-	/* End XCConfigurationList section */
+		E4F100000000000000000009 /* Build configuration list for PBXNativeTarget "SwiftChessDemoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E4F10000000000000000000A /* Debug */,
+				E4F10000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../SwiftChessTools;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Trickfest/ArasanEmbedded.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A5A100000000000000000003 /* ArasanEmbedded */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */;
+			productName = ArasanEmbedded;
+		};
+		C0D10000000000000000000D /* ChessUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChessUI;
+		};
+		D4D200000000000000000004 /* ChessCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChessCore;
+		};
+		D4D200000000000000000005 /* ChessUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChessUI;
+		};
+		D4D200000000000000000006 /* ChessUCI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ChessUCI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = BBE95A352F09B47C003C9B73 /* Project object */;
 }
