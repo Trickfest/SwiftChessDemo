@@ -76,6 +76,26 @@ See `../StockfishEmbedded/README.md` or
 asset setup. SwiftChessDemo intentionally does not duplicate the exact NNUE
 filename because it changes when StockfishEmbedded updates vendored Stockfish.
 
+### Physical-device signing
+
+The public project does not select an Apple Developer Team. Simulator builds
+need no signing setup. To run on an iPhone or iPad, create the ignored local
+configuration and enter the Team ID for your own Apple Developer membership:
+
+```sh
+cp Configurations/Signing.local.xcconfig.example \
+  Configurations/Signing.local.xcconfig
+```
+
+Then replace `YOUR_TEAM_ID` and `YOUR_REVERSE_DNS_PREFIX` in
+`Signing.local.xcconfig`. The prefix must be one you control, such as
+`com.example.yourname`, because Apple bundle identifiers are unique to a
+developer account. Even an individual developer membership has a Team ID; the
+term does not imply that multiple people work on the project. Keep this
+account-specific file uncommitted. Use it instead of changing the Team or
+Bundle Identifier fields in Xcode, which may write target-level overrides into
+the shared project file.
+
 How it all fits together:
 - `ChessCore` owns board state, legal move generation, move application, PGN
   parsing, FEN serialization, SAN move records, game status, and draw claims.

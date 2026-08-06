@@ -7,6 +7,12 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+### Changed
+
+- Made the shared Xcode project independent of any Apple Developer Team and
+  added ignored local xcconfig overrides for a device builder's signing team
+  and unique bundle-identifier prefix.
+
 ## 1.2.1 - 2026-08-06
 
 ### Changed

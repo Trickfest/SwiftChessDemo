@@ -4,6 +4,10 @@
 
 ## User settings
 xcuserdata/
+SwiftChessDemo.xcodeproj/project.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
+
+## Local code signing
+/Configurations/Signing.local.xcconfig
 
 ## Obj-C/Swift specific
 *.hmap

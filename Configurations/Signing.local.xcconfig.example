@@ -1,0 +1,5 @@
+// Copy this file to Signing.local.xcconfig and replace both placeholders.
+// Use the Team ID shown for your Apple Developer membership and a reverse-DNS
+// prefix that you control so Xcode can provision unique bundle identifiers.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX = YOUR_REVERSE_DNS_PREFIX

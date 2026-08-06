@@ -27,6 +27,16 @@ Stockfish NNUE weights are required to run the engine. Initialize the sibling
 ```
 Keep downloaded NNUE files out of commits.
 
+The tracked Xcode project is intentionally independent of any Apple Developer
+Team. Physical-device builders should copy
+`Configurations/Signing.local.xcconfig.example` to the ignored
+`Configurations/Signing.local.xcconfig` and set their own `DEVELOPMENT_TEAM`
+and `SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX` there. Do not commit a Team ID, replace
+the variable-backed bundle identifiers, or reintroduce target-level signing
+settings in `project.pbxproj`; editing the Team or Bundle Identifier fields in
+Xcode's Signing & Capabilities pane may create such an override. Simulator and
+unsigned generic-device builds do not require the local signing file.
+
 ## Build, Test, and Development Commands
 - Xcode: open `SwiftChessDemo.xcodeproj` and run the `SwiftChessDemo` app target.
 - CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`

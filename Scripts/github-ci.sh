@@ -10,6 +10,47 @@ EXPECTED_MARKETING_VERSION="1.2.1"
 
 cd "$ROOT_DIR"
 
+if grep -q 'DEVELOPMENT_TEAM' SwiftChessDemo.xcodeproj/project.pbxproj ||
+  grep -Eq '^[[:space:]]*DEVELOPMENT_TEAM[[:space:]]*=' \
+    Configurations/Signing.xcconfig; then
+  printf '%s\n' \
+    'The shared Xcode project must not contain an Apple Developer Team override.' >&2
+  printf '%s\n' \
+    'Use the ignored Configurations/Signing.local.xcconfig file instead.' >&2
+  exit 1
+fi
+if [[ "$(grep -Ec '^[[:space:]]*DEVELOPMENT_TEAM[[:space:]]*=' \
+  Configurations/Signing.local.xcconfig.example)" -ne 1 ]] ||
+  ! grep -Fxq 'DEVELOPMENT_TEAM = YOUR_TEAM_ID' \
+    Configurations/Signing.local.xcconfig.example; then
+  printf '%s\n' \
+    'The tracked local signing example must contain exactly the Team ID placeholder.' >&2
+  exit 1
+fi
+if [[ "$(grep -Ec '^[[:space:]]*SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX[[:space:]]*=' \
+  Configurations/Signing.local.xcconfig.example)" -ne 1 ]] ||
+  ! grep -Fxq \
+    'SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX = YOUR_REVERSE_DNS_PREFIX' \
+    Configurations/Signing.local.xcconfig.example; then
+  printf '%s\n' \
+    'The tracked local signing example must contain exactly the bundle ID placeholder.' >&2
+  exit 1
+fi
+if ! grep -Fq '#include? "Signing.local.xcconfig"' \
+  Configurations/Signing.xcconfig; then
+  printf '%s\n' \
+    'Configurations/Signing.xcconfig must retain its optional local include.' >&2
+  exit 1
+fi
+if [[ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' \
+  SwiftChessDemo.xcodeproj/project.pbxproj)" -ne 6 ]] ||
+  grep 'PRODUCT_BUNDLE_IDENTIFIER' SwiftChessDemo.xcodeproj/project.pbxproj |
+  grep -Fqv '$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX)'; then
+  printf '%s\n' \
+    'Shared bundle identifiers must use SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX.' >&2
+  exit 1
+fi
+
 for dependency in ../SwiftChessTools ../StockfishEmbedded; do
   if [[ ! -d "$dependency" ]]; then
     printf 'Missing required sibling checkout: %s\n' "$dependency" >&2

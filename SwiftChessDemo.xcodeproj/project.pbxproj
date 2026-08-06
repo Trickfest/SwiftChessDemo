@@ -54,6 +54,8 @@
 		BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftChessDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D100000000000000000001 /* SwiftChessDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F100000000000000000001 /* SwiftChessDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0A100000000000000000001 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
+		F0A100000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -140,6 +142,7 @@
 		BBE95A342F09B47C003C9B73 = {
 			isa = PBXGroup;
 			children = (
+				F0A100000000000000000003 /* Configurations */,
 				BBE95A3F2F09B47C003C9B73 /* SwiftChessDemo */,
 				E4F100000000000000000002 /* SwiftChessDemoTests */,
 				C0D100000000000000000002 /* SwiftChessDemoUITests */,
@@ -166,6 +169,15 @@
 			);
 			name = StockfishEmbedded;
 			path = ../StockfishEmbedded;
+			sourceTree = "<group>";
+		};
+		F0A100000000000000000003 /* Configurations */ = {
+			isa = PBXGroup;
+			children = (
+				F0A100000000000000000001 /* Signing.xcconfig */,
+				F0A100000000000000000002 /* Signing.local.xcconfig.example */,
+			);
+			path = Configurations;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -377,6 +389,7 @@
 /* Begin XCBuildConfiguration section */
 		BBE95A462F09B47D003C9B73 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F0A100000000000000000001 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -410,7 +423,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -441,6 +453,7 @@
 		};
 		BBE95A472F09B47D003C9B73 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F0A100000000000000000001 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -474,7 +487,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -503,7 +515,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZXR7Q983LG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -525,7 +536,7 @@
 					"$(inherited)",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -545,7 +556,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = ZXR7Q983LG;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -567,7 +577,7 @@
 					"$(inherited)",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -585,7 +595,6 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -595,7 +604,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -611,7 +620,6 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -621,7 +629,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -638,7 +646,6 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -652,7 +659,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -670,7 +677,6 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = LVYMXM9579;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -684,7 +690,7 @@
 					"@loader_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.2.1;
-				PRODUCT_BUNDLE_IDENTIFIER = trickfest.SwiftChessDemoTests;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
