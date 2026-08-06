@@ -7,6 +7,8 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.2.2 - 2026-08-06
+
 ### Changed
 
 - Made the shared Xcode project independent of any Apple Developer Team and
