@@ -7,6 +7,22 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.2.1 - 2026-08-06
+
+### Changed
+
+- Updated the remote Arasan dependency to `ArasanEmbedded` 1.2.0, which embeds
+  upstream Arasan `95e90f5c` while preserving the physical-device-safe package
+  initializer and existing public wrapper API.
+- Validated the demo against the source releases of `StockfishEmbedded` 1.9.0,
+  `ArasanEmbedded` 1.2.0, and `SwiftChessTools` 1.1.0.
+
+### Fixed
+
+- Wait for native Arasan teardown at the end of the app-hosted integration
+  tests, preventing XCTest process exit from racing the engine thread's final
+  NNUE evaluation and process-global C++ destruction.
+
 ## 1.2.0 - 2026-07-13
 
 ### Added

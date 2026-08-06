@@ -87,6 +87,12 @@ final class ArasanMoveProviderIntegrationTests: XCTestCase {
             file: file,
             line: line
         )
+
+        // `stop()` deliberately moves the native thread join off the main
+        // actor. XCTest exits its hosted app immediately after the final test,
+        // so wait for that join before process-global Arasan state is destroyed.
+        provider.stop()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
     }
 }
 
