@@ -610,56 +610,36 @@ final class SwiftChessDemoUITests: XCTestCase {
         try select("3 arrows", from: picker, in: app)
         try waitForElementValue(picker, expectedValue: "3 arrows", named: "suggestion count picker")
 
-        let bestArrow = try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "best suggestion arrow"
-        )
-        XCTAssertTrue(bestArrow.label.contains("Best suggestion"))
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
-            named: "second suggestion arrow"
-        )
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
-            named: "third suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion e2 to e4 | Second suggestion g1 to f3 | Third suggestion d2 to d4",
+            in: app,
+            named: "three rendered suggestion arrows"
         )
 
         try select("1 arrow", from: picker, in: app)
         try waitForElementValue(picker, expectedValue: "1 arrow", named: "suggestion count picker")
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "remaining best suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion e2 to e4,",
+            in: app,
+            named: "one rendered suggestion arrow"
         )
-        try waitForElementToDisappear(
-            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
-            named: "second suggestion arrow"
-        )
-        try waitForElementToDisappear(
-            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
-            named: "third suggestion arrow"
-        )
+        XCTAssertFalse(try boardValue(in: app).contains("Second suggestion"))
+        XCTAssertFalse(try boardValue(in: app).contains("Third suggestion"))
 
         try select("3 arrows", from: picker, in: app)
         try waitForElementValue(picker, expectedValue: "3 arrows", named: "suggestion count picker")
-        let restoredBestArrow = try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "restored best suggestion arrow"
-        )
-        XCTAssertTrue(restoredBestArrow.label.contains("Best suggestion"))
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
-            named: "restored second suggestion arrow"
-        )
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.d2.d4"].firstMatch,
-            named: "restored third suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion e2 to e4 | Second suggestion g1 to f3 | Third suggestion d2 to d4",
+            in: app,
+            named: "restored rendered suggestion arrows"
         )
 
         try select("Off", from: picker, in: app)
         try waitForElementValue(picker, expectedValue: "Off", named: "suggestion count picker")
-        try waitForElementToDisappear(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "best suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: None",
+            in: app,
+            named: "cleared suggestion arrows"
         )
     }
 
@@ -670,13 +650,10 @@ final class SwiftChessDemoUITests: XCTestCase {
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "initial best suggestion arrow"
-        )
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
-            named: "initial second suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion e2 to e4 | Second suggestion g1 to f3",
+            in: app,
+            named: "initial rendered suggestion arrows"
         )
 
         let initialPosition = try boardValue(in: app)
@@ -688,10 +665,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "White opening move"
         )
 
-        try waitForElementToDisappear(
-            app.descendants(matching: .any)["ChessUI.arrow.e2.e4"].firstMatch,
-            named: "stale opening suggestion arrow"
-        )
+        XCTAssertFalse(afterWhiteMove.contains("Best suggestion e2 to e4"))
 
         _ = try waitForBoardTurn(
             .white,
@@ -700,13 +674,10 @@ final class SwiftChessDemoUITests: XCTestCase {
             named: "Black scenario reply"
         )
 
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.g1.f3"].firstMatch,
-            named: "refreshed best suggestion arrow"
-        )
-        try requireElement(
-            app.descendants(matching: .any)["ChessUI.arrow.f1.c4"].firstMatch,
-            named: "refreshed second suggestion arrow"
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion g1 to f3 | Second suggestion f1 to c4",
+            in: app,
+            named: "refreshed rendered suggestion arrows"
         )
     }
 

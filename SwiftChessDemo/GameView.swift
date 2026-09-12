@@ -284,6 +284,7 @@ struct GameView: View {
             + "Coordinates: \(coordinateState), "
             + "Mode: \(viewModel.gameMode.displayName), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
+            + "Suggestion arrows: \(suggestionArrowAccessibilityValue), "
             + "Move time: \(viewModel.engineMoveTime.displayName), "
             + "Engine: \(viewModel.selectedEngineKind.displayName), "
             + "Evaluation engine: \(viewModel.evaluationEngineKind?.displayName ?? "None"), "
@@ -291,6 +292,11 @@ struct GameView: View {
             + engineDemoAccessibilityValue
             + viewModel.scenarioAccessibilityValue
             + "FEN: \(viewModel.positionFEN)"
+    }
+
+    private var suggestionArrowAccessibilityValue: String {
+        let labels = viewModel.boardModel.arrows.compactMap(\.label)
+        return labels.isEmpty ? "None" : labels.joined(separator: " | ")
     }
 
     private var engineDemoAccessibilityValue: String {

@@ -7,6 +7,19 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.2.3 - 2026-09-12
+
+### Changed
+
+- Updated the source-level sibling integration to the `StockfishEmbedded`
+  1.10.0 release, which vendors Stockfish 19 plus twelve subsequent upstream
+  commits and uses the new `nn-1a298aa575a0.nnue` network.
+- Kept the remote `ArasanEmbedded` dependency at the existing 1.2.0 release.
+- Updated the test-only suggestion-arrow diagnostic so UI validation checks the
+  board model after ChessUI intentionally hid decorative arrows from the
+  VoiceOver navigation tree.
+- Aligned the release-validation version assertion with 1.2.3.
+
 ## 1.2.2 - 2026-08-06
 
 ### Changed
