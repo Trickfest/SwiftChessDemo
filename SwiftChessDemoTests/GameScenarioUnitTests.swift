@@ -1866,7 +1866,7 @@ private final class RecordingEmbeddedEngineTransport: EmbeddedEngineTransport, @
     }
 }
 
-private final class BlockingEmbeddedEngineTransport: EmbeddedEngineTransport, @unchecked Sendable {
+nonisolated private final class BlockingEmbeddedEngineTransport: EmbeddedEngineTransport, @unchecked Sendable {
     private let condition = NSCondition()
     private var hasStarted = false
     private var mayFinish = false

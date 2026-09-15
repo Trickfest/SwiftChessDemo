@@ -7,6 +7,18 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.2.4 - 2026-09-15
+
+### Changed
+
+- Updated the remote Arasan dependency to `ArasanEmbedded` 1.3.0, which embeds
+  upstream Arasan `d507b7cc` and its fix for invalid late-move-reduction
+  `std::clamp` bounds, along with the `arasanv8-20260906.nnue` network.
+- Aligned the built marketing version and release-validation assertion with
+  1.2.4.
+- Kept the lock-protected blocking transport test fixture explicitly
+  nonisolated for Xcode 27's stricter default-main-actor checking.
+
 ## 1.2.3 - 2026-09-12
 
 ### Changed
