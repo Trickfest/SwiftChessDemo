@@ -277,11 +277,9 @@ struct GameView: View {
     }
 
     private var boardAccessibilityValue: String {
-        let coordinateState = viewModel.showsCoordinateLabels ? "Shown" : "Hidden"
-
         return "Pieces: \(viewModel.pieceSet.displayName), "
             + "Board: \(viewModel.boardTheme.displayName), "
-            + "Coordinates: \(coordinateState), "
+            + "Coordinates: \(viewModel.coordinateLabelMode.displayName), "
             + "Mode: \(viewModel.gameMode.displayName), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
             + "Suggestion arrows: \(suggestionArrowAccessibilityValue), "
@@ -350,7 +348,7 @@ struct GameView: View {
                         suggestionArrowsControl
                         engineSelectionControl
                     }
-                    coordinateLabelsToggle
+                    coordinateLabelsControl
                     gameStatusToggle
                     moveListToggle
                     evaluationBarToggle
@@ -386,7 +384,7 @@ struct GameView: View {
 
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: 8) {
-                    coordinateLabelsToggle
+                    coordinateLabelsControl
                     gameStatusToggle
                     moveListToggle
                     evaluationBarToggle
@@ -394,7 +392,7 @@ struct GameView: View {
             } else {
                 VStack(spacing: 8) {
                     HStack(spacing: 10) {
-                        coordinateLabelsToggle
+                        coordinateLabelsControl
                         gameStatusToggle
                     }
 
@@ -806,15 +804,25 @@ struct GameView: View {
         .accessibilityValue(viewModel.engineMoveTime.displayName)
     }
 
-    private var coordinateLabelsToggle: some View {
-        displayToggleRow(
-            title: "Coordinates",
-            systemImage: "number.square",
-            isOn: viewModel.showsCoordinateLabels,
-            accessibilityIdentifier: "Game.coordinateLabelsToggle"
-        ) {
-            viewModel.setCoordinateLabelsVisible(!viewModel.showsCoordinateLabels)
+    private var coordinateLabelsControl: some View {
+        Menu {
+            ForEach(GameCoordinateLabelMode.allCases) { mode in
+                Button(mode.displayName) {
+                    viewModel.setCoordinateLabelMode(mode)
+                }
+                .disabled(mode == viewModel.coordinateLabelMode)
+            }
+        } label: {
+            displayControlLabel(
+                title: "Coordinates",
+                value: viewModel.coordinateLabelMode.displayName,
+                systemImage: "number.square"
+            )
         }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("Game.coordinateLabelModePicker")
+        .accessibilityValue(viewModel.coordinateLabelMode.displayName)
     }
 
     private var gameStatusToggle: some View {

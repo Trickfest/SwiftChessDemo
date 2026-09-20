@@ -889,6 +889,30 @@ final class GameViewModelAnalysisRefreshTests: XCTestCase {
 
 @MainActor
 final class GameViewModelEngineDemoTests: XCTestCase {
+    func testCoordinateLabelModesUpdateChessUIModel() {
+        let harness = EngineAnalysisHarness()
+        let viewModel = harness.makeViewModel()
+
+        XCTAssertEqual(viewModel.coordinateLabelMode, .inside)
+        XCTAssertTrue(viewModel.boardModel.showsCoordinateLabels)
+        XCTAssertEqual(viewModel.boardModel.coordinateLabelPlacement, .inside)
+
+        viewModel.setCoordinateLabelMode(.outside)
+        XCTAssertEqual(viewModel.coordinateLabelMode, .outside)
+        XCTAssertTrue(viewModel.boardModel.showsCoordinateLabels)
+        XCTAssertEqual(viewModel.boardModel.coordinateLabelPlacement, .outside)
+
+        viewModel.setCoordinateLabelMode(.none)
+        XCTAssertEqual(viewModel.coordinateLabelMode, .none)
+        XCTAssertFalse(viewModel.boardModel.showsCoordinateLabels)
+        XCTAssertEqual(viewModel.boardModel.coordinateLabelPlacement, .outside)
+
+        viewModel.setCoordinateLabelMode(.inside)
+        XCTAssertEqual(viewModel.coordinateLabelMode, .inside)
+        XCTAssertTrue(viewModel.boardModel.showsCoordinateLabels)
+        XCTAssertEqual(viewModel.boardModel.coordinateLabelPlacement, .inside)
+    }
+
     func testEngineDemoDefaultConfigurationUsesDefaultMoveTime() {
         let configuration = EngineDemoConfiguration.defaultConfiguration()
 

@@ -7,6 +7,21 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.3.0 - 2026-09-20
+
+### Added
+
+- Added an in-game `None` / `Inside` / `Outside` coordinate-label preference
+  using SwiftChessTools' external-coordinate API while preserving inside labels
+  as the default.
+
+### Changed
+
+- Validated the demo against the `SwiftChessTools` 1.2.0,
+  `StockfishEmbedded` 1.10.0, and `ArasanEmbedded` 1.3.0 source releases.
+- Aligned the built marketing version and release-validation assertion with
+  1.3.0.
+
 ## 1.2.4 - 2026-09-15
 
 ### Changed

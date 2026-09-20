@@ -13,6 +13,26 @@ import ChessCore
 import ChessUI
 import ChessUCI
 
+/// Coordinate-label choices exposed by the demo's in-game preferences.
+enum GameCoordinateLabelMode: String, CaseIterable, Identifiable, Sendable {
+    case none
+    case inside
+    case outside
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none:
+            return "None"
+        case .inside:
+            return "Inside"
+        case .outside:
+            return "Outside"
+        }
+    }
+}
+
 /// Coordinates the chess game state, the UI, and the embedded engine.
 ///
 /// Teaching focus:
@@ -99,12 +119,8 @@ final class GameViewModel: ObservableObject {
             boardModel.boardTheme = boardTheme
         }
     }
-    /// Controls whether ChessUI renders rank and file coordinate labels.
-    @Published var showsCoordinateLabels = true {
-        didSet {
-            boardModel.showsCoordinateLabels = showsCoordinateLabels
-        }
-    }
+    /// Controls whether ChessUI hides coordinates or renders them inside or outside the board.
+    @Published private(set) var coordinateLabelMode = GameCoordinateLabelMode.inside
     /// Controls whether the game screen shows ChessUI's status component.
     @Published var showsGameStatus = true
     /// Controls whether the game screen shows ChessUI's move-list component.
@@ -516,9 +532,21 @@ final class GameViewModel: ObservableObject {
             + "Scenario status: \(statusAccessibilityDescription(for: gameStatus)), "
     }
 
-    /// Updates whether ChessUI draws rank and file coordinate labels.
-    func setCoordinateLabelsVisible(_ showsCoordinateLabels: Bool) {
-        self.showsCoordinateLabels = showsCoordinateLabels
+    /// Updates whether ChessUI hides coordinates or renders them inside or outside the board.
+    func setCoordinateLabelMode(_ mode: GameCoordinateLabelMode) {
+        guard mode != coordinateLabelMode else { return }
+
+        coordinateLabelMode = mode
+        switch mode {
+        case .none:
+            boardModel.showsCoordinateLabels = false
+        case .inside:
+            boardModel.coordinateLabelPlacement = .inside
+            boardModel.showsCoordinateLabels = true
+        case .outside:
+            boardModel.coordinateLabelPlacement = .outside
+            boardModel.showsCoordinateLabels = true
+        }
     }
 
     /// Updates whether the visible game status reference component is shown.

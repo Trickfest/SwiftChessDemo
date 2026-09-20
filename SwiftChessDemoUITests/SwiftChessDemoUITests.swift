@@ -387,27 +387,31 @@ final class SwiftChessDemoUITests: XCTestCase {
         attachScreenshot(from: app, named: "SwiftChessDemo - Arasan versus Arasan six live plies")
     }
 
-    func testGameCoordinateLabelsToggleUpdatesBoardState() throws {
+    func testGameCoordinateLabelPickerUpdatesBoardState() throws {
         let app = testApplication()
         app.launch()
 
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
 
-        let toggle = try requireElement(
-            app.descendants(matching: .any)["Game.coordinateLabelsToggle"].firstMatch,
-            named: "coordinate labels toggle"
+        let picker = try scrollUntilHittable(
+            app.descendants(matching: .any)["Game.coordinateLabelModePicker"].firstMatch,
+            named: "coordinate-label mode picker",
+            in: app
         )
-        let boardValue = try boardValue(in: app)
-        XCTAssertTrue(boardValue.contains("Coordinates: Shown"))
+        try waitForElementValue(picker, expectedValue: "Inside", named: "initial coordinate-label mode")
+        try waitForGameBoardState(containing: "Coordinates: Inside", in: app, named: "inside coordinates")
 
-        toggle.tap()
+        try select("Outside", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "Outside", named: "outside coordinate-label mode")
+        try waitForGameBoardState(containing: "Coordinates: Outside", in: app, named: "outside coordinates")
 
-        let hiddenValue = try waitForBoardValue(
-            containing: "Coordinates: Hidden",
-            in: app,
-            named: "coordinate labels hidden"
-        )
-        XCTAssertTrue(hiddenValue.contains("Coordinates: Hidden"))
+        try select("None", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "None", named: "hidden coordinate-label mode")
+        try waitForGameBoardState(containing: "Coordinates: None", in: app, named: "hidden coordinates")
+
+        try select("Inside", from: picker, in: app)
+        try waitForElementValue(picker, expectedValue: "Inside", named: "restored coordinate-label mode")
+        try waitForGameBoardState(containing: "Coordinates: Inside", in: app, named: "restored inside coordinates")
     }
 
     func testGameReferenceComponentsRenderAndMoveListUpdates() throws {

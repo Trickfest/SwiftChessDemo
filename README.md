@@ -192,12 +192,12 @@ Key files to read:
 - `SwiftChessDemo/ContentView.swift`: setup UI for choosing the game mode and
   human side before entering the game screen.
 - `SwiftChessDemo/GameView.swift`: board UI, live piece-set, board-theme,
-  engine-selection, and coordinate-label switching during play, visible ChessUI
-  status and move-list components, status-row engine activity and timeout
-  notices, optional evaluation-bar display, in-game engine move-time control,
-  selectable move-suggestion arrows, engine-vs-engine playback controls,
-  terminal-result handling, compact horizontal move-list layout on iPhone, and
-  navigation flow.
+  engine-selection, and none/inside/outside coordinate-label switching during
+  play, visible ChessUI status and move-list components, status-row engine
+  activity and timeout notices, optional evaluation-bar display, in-game engine
+  move-time control, selectable move-suggestion arrows, engine-vs-engine
+  playback controls, terminal-result handling, compact horizontal move-list
+  layout on iPhone, and navigation flow.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
   fallback, evaluation normalization, selected-engine MultiPV suggestion
@@ -229,7 +229,7 @@ Key files to read:
   live-analysis refreshes, and engine-vs-engine playback/restart/stress
   behavior.
 - `SwiftChessDemoUITests/SwiftChessDemoUITests.swift`: UI coverage for available
-  in-game piece-set selection, board-theme selection, coordinate-label toggling,
+  in-game piece-set selection, board-theme selection, coordinate-label placement,
   live-engine selection, status, move-list, evaluation display options,
   selectable suggestion arrows, engine-vs-engine setup and game-screen controls,
   scenario replay including terminal-result dismissal, and four-full-move game
