@@ -7,6 +7,21 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.3.1 - 2026-09-28
+
+### Fixed
+
+- Picked up SwiftChessTools 1.2.1's outside-coordinate board layout fix, which
+  prevents an initial piece shift and keeps last-move highlights aligned with
+  the playable squares.
+
+### Changed
+
+- Validated the source demo against SwiftChessTools 1.2.1, StockfishEmbedded
+  1.10.0, and ArasanEmbedded 1.3.0.
+- Aligned the built marketing version and release-validation assertion with
+  1.3.1.
+
 ## 1.3.0 - 2026-09-20
 
 ### Added
