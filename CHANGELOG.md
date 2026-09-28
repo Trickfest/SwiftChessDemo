@@ -7,6 +7,17 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.3.2 - 2026-09-28
+
+### Changed
+
+- Updated the shared Xcode scheme for Xcode 27 and validated the complete demo
+  gate with Xcode 27.
+- Validated against SwiftChessTools 1.2.1, ArasanEmbedded 1.3.0, and the
+  StockfishEmbedded 1.10.0 source plus its Xcode 27 project update (`21660426`).
+- Aligned the built marketing version and release-validation assertion with
+  1.3.2.
+
 ## 1.3.1 - 2026-09-28
 
 ### Fixed

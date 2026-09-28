@@ -14,7 +14,7 @@ and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
 parent folder does not need to be a Git repo. `ArasanEmbedded` is resolved by
 Swift Package Manager from its public GitHub repository.
 
-The supported development host is an Apple-silicon Mac with Xcode 26. The app
+The validated development host is an Apple-silicon Mac with Xcode 27. The app
 uses Swift 6 language mode and targets iOS 26. Arasan's current source snapshot
 is arm64-only, so do not treat
 an x86_64 simulator build failure as an app regression.

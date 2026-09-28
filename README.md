@@ -33,9 +33,9 @@ between regular-width iPad layouts and compact iPhone layouts.
 
 ## Setup
 
-Development requires Xcode 26 on an Apple-silicon Mac. The app uses Swift 6
-language mode and targets iOS 26. The current Arasan source snapshot
-intentionally supports arm64 only, so an
+The validated development host is Xcode 27 on an Apple-silicon Mac. The app
+uses Swift 6 language mode and targets iOS 26. The current Arasan source
+snapshot intentionally supports arm64 only, so an
 x86_64 simulator build is not a supported configuration.
 
 Public checkout layout:
