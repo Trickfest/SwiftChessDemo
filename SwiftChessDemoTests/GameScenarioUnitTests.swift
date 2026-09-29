@@ -14,6 +14,172 @@ import ChessUCI
 @testable import SwiftChessDemo
 import XCTest
 
+final class StockfishNetworkResourceTests: XCTestCase {
+    func testRequiredNetworkIsBundledWithTheApp() throws {
+        let networkURL = try XCTUnwrap(StockfishNetworkResource.bundledFileURL())
+
+        XCTAssertEqual(networkURL.lastPathComponent, StockfishNetworkResource.fileName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: networkURL.path))
+    }
+}
+
+@MainActor
+final class StockfishMoveProviderIntegrationTests: XCTestCase {
+    func testStockfishProviderSearchesWithBundledNetwork() async {
+        let expectedBestMove = expectation(description: "Stockfish returns a best move")
+        var didComplete = false
+
+        let provider = StockfishMoveProvider { event in
+            switch event {
+            case .output(.bestMove(_), _):
+                guard !didComplete else { return }
+                didComplete = true
+                expectedBestMove.fulfill()
+
+            case .failure(let message, _):
+                XCTFail("Stockfish startup failed: \(message)")
+                guard !didComplete else { return }
+                didComplete = true
+                expectedBestMove.fulfill()
+
+            case .timeout, .timeoutWithoutBestMove:
+                XCTFail("Stockfish timed out before returning a best move")
+                guard !didComplete else { return }
+                didComplete = true
+                expectedBestMove.fulfill()
+
+            case .output:
+                return
+            }
+        }
+
+        provider.startOrQueueSearch(
+            EngineSearchRequest(
+                engineKind: .stockfish,
+                purpose: .opponentMove,
+                fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                sideToMove: .white,
+                moveTimeMilliseconds: EngineMoveTime.quarterSecond.rawValue,
+                multiPVCount: 1,
+                safetyTimeoutSeconds: 10
+            )
+        )
+
+        await fulfillment(of: [expectedBestMove], timeout: 15)
+        provider.stop()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
+    }
+
+    func testStockfishResumesAfterAnArasanTurnWithoutReloadingItsNetwork() async {
+        let firstStockfishMove = expectation(description: "Stockfish returns its first move")
+        let arasanMove = expectation(description: "Arasan returns a move")
+        let resumedStockfishMove = expectation(description: "Resumed Stockfish returns a move")
+        var stockfishBestMoveCount = 0
+        var stockfishSearchStarted = Date()
+        var stockfishElapsedTimes: [TimeInterval] = []
+
+        let stockfish = StockfishMoveProvider { event in
+            switch event {
+            case .output(.bestMove(_), _):
+                stockfishBestMoveCount += 1
+                stockfishElapsedTimes.append(Date().timeIntervalSince(stockfishSearchStarted))
+                if stockfishBestMoveCount == 1 {
+                    firstStockfishMove.fulfill()
+                } else if stockfishBestMoveCount == 2 {
+                    resumedStockfishMove.fulfill()
+                }
+
+            case .failure(let message, _):
+                XCTFail("Stockfish startup failed: \(message)")
+
+            case .timeout, .timeoutWithoutBestMove:
+                XCTFail("Stockfish timed out before returning a best move")
+
+            case .output:
+                return
+            }
+        }
+        let arasan = ArasanMoveProvider { event in
+            switch event {
+            case .output(.bestMove(_), _):
+                arasanMove.fulfill()
+
+            case .failure(let message, _):
+                XCTFail("Arasan startup failed: \(message)")
+
+            case .timeout, .timeoutWithoutBestMove:
+                XCTFail("Arasan timed out before returning a best move")
+
+            case .output:
+                return
+            }
+        }
+        defer {
+            stockfish.stop()
+            arasan.stop()
+        }
+
+        let startingFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        stockfishSearchStarted = Date()
+        stockfish.startOrQueueSearch(
+            EngineSearchRequest(
+                engineKind: .stockfish,
+                purpose: .opponentMove,
+                fen: startingFEN,
+                sideToMove: .white,
+                moveTimeMilliseconds: EngineMoveTime.quarterSecond.rawValue,
+                multiPVCount: 1,
+                safetyTimeoutSeconds: 10
+            )
+        )
+        await fulfillment(of: [firstStockfishMove], timeout: 15)
+
+        stockfish.suspend()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
+
+        arasan.startOrQueueSearch(
+            EngineSearchRequest(
+                engineKind: .arasan,
+                purpose: .opponentMove,
+                fen: startingFEN,
+                sideToMove: .white,
+                moveTimeMilliseconds: EngineMoveTime.quarterSecond.rawValue,
+                multiPVCount: 1,
+                safetyTimeoutSeconds: 10
+            )
+        )
+        await fulfillment(of: [arasanMove], timeout: 15)
+        arasan.stop()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
+
+        stockfishSearchStarted = Date()
+        stockfish.startOrQueueSearch(
+            EngineSearchRequest(
+                engineKind: .stockfish,
+                purpose: .opponentMove,
+                fen: startingFEN,
+                sideToMove: .white,
+                moveTimeMilliseconds: EngineMoveTime.quarterSecond.rawValue,
+                multiPVCount: 1,
+                safetyTimeoutSeconds: 10
+            )
+        )
+        await fulfillment(of: [resumedStockfishMove], timeout: 15)
+
+        XCTAssertEqual(stockfishElapsedTimes.count, 2)
+        if stockfishElapsedTimes.count == 2 {
+            print(
+                "Stockfish first search: \(stockfishElapsedTimes[0])s; "
+                    + "resumed search: \(stockfishElapsedTimes[1])s"
+            )
+            XCTAssertLessThan(stockfishElapsedTimes[1], stockfishElapsedTimes[0])
+        }
+
+        stockfish.stop()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
+    }
+}
+
 @MainActor
 final class ArasanMoveProviderIntegrationTests: XCTestCase {
     func testArasanProviderReportsLargeMaterialEvaluation() async throws {
@@ -1002,6 +1168,7 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
         harness.stockfish.emitBestMove("e2e4")
 
+        XCTAssertEqual(harness.stockfish.suspendCount, 1)
         XCTAssertEqual(harness.stockfish.stopCount, 1)
         XCTAssertEqual(harness.arasan.requireLastRequest().sideToMove, .black)
         XCTAssertEqual(harness.arasan.requireLastRequest().moveTimeMilliseconds, EngineMoveTime.fiveSeconds.rawValue)
@@ -1012,6 +1179,7 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
         harness.arasan.emitBestMove("e7e5")
 
+        XCTAssertEqual(harness.arasan.suspendCount, 1)
         XCTAssertEqual(harness.arasan.stopCount, 1)
         XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .white)
         XCTAssertEqual(harness.stockfish.requireLastRequest().moveTimeMilliseconds, EngineMoveTime.halfSecond.rawValue)
@@ -1574,6 +1742,52 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
         XCTAssertEqual(replacementTransport.commands, ["uci"])
     }
 
+    func testSuspendableTransportIsResumedInsteadOfRecreated() async {
+        let coordinator = EmbeddedEngineLifecycleCoordinator()
+        let transport = RecordingSuspendableEmbeddedEngineTransport()
+        var constructionCount = 0
+        let session = EmbeddedEngineProviderSession(
+            engineKind: .stockfish,
+            startupSequence: .providerSendsUCI,
+            lifecycleCoordinator: coordinator,
+            transportFactory: { handler in
+                constructionCount += 1
+                transport.install(lineHandler: handler)
+                return transport
+            },
+            eventHandler: { _ in }
+        )
+        defer { session.stop() }
+
+        session.startOrQueueSearch(makeRequest(engineKind: .stockfish, fen: "first"))
+        guard await waitUntil({ transport.commands == ["uci"] }) else { return }
+        transport.emit("uciok")
+        guard await waitUntil({ transport.commands.count == 4 }) else { return }
+        transport.emit("readyok")
+        guard await waitUntil({ transport.commands.count == 6 }) else { return }
+        transport.emit("bestmove e2e4")
+        guard await waitUntil({ !session.isBusy }) else { return }
+
+        session.suspend()
+        guard await waitUntil({ transport.suspendCount == 1 }) else { return }
+
+        session.startOrQueueSearch(makeRequest(engineKind: .stockfish, fen: "second"))
+        guard await waitUntil({ transport.resumeCount == 1 && transport.commands.count == 7 }) else {
+            return
+        }
+        XCTAssertEqual(transport.commands.last, "uci")
+        XCTAssertEqual(constructionCount, 1)
+
+        transport.emit("uciok")
+        guard await waitUntil({ transport.commands.count == 10 }) else { return }
+        transport.emit("readyok")
+        guard await waitUntil({ transport.commands.count == 12 }) else { return }
+        XCTAssertEqual(Array(transport.commands.suffix(2)), [
+            "position fen second",
+            "go movetime 250",
+        ])
+    }
+
     func testSearchTimeoutRequestsStopAndAcceptsLateBestMove() async {
         let transport = RecordingEmbeddedEngineTransport()
         var events: [EngineProviderEvent] = []
@@ -1742,6 +1956,7 @@ private final class RecordingEngineProvider: DemoEngineProvider {
     var eventHandler: DemoEngineEventHandler?
     private(set) var requests: [EngineSearchRequest] = []
     private(set) var stopCount = 0
+    private(set) var suspendCount = 0
     private(set) var cancelAnalysisCount = 0
     private var activeRequest: EngineSearchRequest?
 
@@ -1787,6 +2002,11 @@ private final class RecordingEngineProvider: DemoEngineProvider {
     func stop() {
         stopCount += 1
         activeRequest = nil
+    }
+
+    func suspend() {
+        suspendCount += 1
+        stop()
     }
 
     func emitInfo(score: UCIScore, move: String? = nil, multipv: Int? = nil) {
@@ -1918,6 +2138,70 @@ nonisolated private final class BlockingEmbeddedEngineTransport: EmbeddedEngineT
         mayFinish = true
         condition.broadcast()
         condition.unlock()
+    }
+}
+
+nonisolated private final class RecordingSuspendableEmbeddedEngineTransport: EmbeddedEngineSuspendableTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCommands: [String] = []
+    private var storedSuspendCount = 0
+    private var storedResumeCount = 0
+    private var storedStopCount = 0
+    private var lineHandler: (@Sendable (String) -> Void)?
+
+    var commands: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedCommands
+    }
+
+    var suspendCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedSuspendCount
+    }
+
+    var resumeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedResumeCount
+    }
+
+    func install(lineHandler: @escaping @Sendable (String) -> Void) {
+        lock.lock()
+        self.lineHandler = lineHandler
+        lock.unlock()
+    }
+
+    nonisolated func sendCommand(_ command: String) {
+        lock.lock()
+        storedCommands.append(command)
+        lock.unlock()
+    }
+
+    nonisolated func suspend() {
+        lock.lock()
+        storedSuspendCount += 1
+        lock.unlock()
+    }
+
+    nonisolated func resume() {
+        lock.lock()
+        storedResumeCount += 1
+        lock.unlock()
+    }
+
+    nonisolated func stop() {
+        lock.lock()
+        storedStopCount += 1
+        lock.unlock()
+    }
+
+    func emit(_ line: String) {
+        lock.lock()
+        let handler = lineHandler
+        lock.unlock()
+        handler?(line)
     }
 }
 

@@ -41,9 +41,9 @@ x86_64 simulator build is not a supported configuration.
 Public checkout layout:
 
 SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling
-checkouts. It resolves `ArasanEmbedded` from GitHub through Swift Package
-Manager. The parent folder can be any local directory; it does not need to be a
-Git repo.
+Swift package checkouts. It resolves `ArasanEmbedded` from GitHub through Swift
+Package Manager. The parent folder can be any local directory; it does not need
+to be a Git repo.
 
 ```sh
 mkdir swift-chess-demo-dev
@@ -63,18 +63,24 @@ swift-chess-demo-dev/
 `-- StockfishEmbedded
 ```
 
-Required after clone: initialize the sibling `../StockfishEmbedded` checkout
-using its NNUE setup instructions. Those Stockfish neural-net files are not in
-Git because they are large, but they are required to run the engine.
+Required after clone: initialize the sibling `../StockfishEmbedded` checkout.
+NNUE is the roughly 94 MB neural-network data file Stockfish uses to evaluate
+chess positions. It is not in Git because it is large. This is a one-command
+developer setup step:
 
 ```
 (cd StockfishEmbedded && Scripts/download-nnue.sh)
 ```
 
-See `../StockfishEmbedded/README.md` or
-`../StockfishEmbedded/Resources/NNUE/README.md` for the authoritative engine
-asset setup. SwiftChessDemo intentionally does not duplicate the exact NNUE
-filename because it changes when StockfishEmbedded updates vendored Stockfish.
+The script chooses and verifies the network required by the vendored Stockfish
+source. The Xcode project then copies that sibling file into the app bundle and
+the app supplies its local URL to `SFEngine`. A built SwiftChessDemo app already
+contains the network it needs; an end user does not download anything
+separately.
+
+See `../StockfishEmbedded/README.md` for the authoritative package quick start
+and asset instructions. When StockfishEmbedded changes networks, update the
+file reference in `SwiftChessDemo.xcodeproj` to the new filename.
 
 ### Physical-device signing
 
@@ -111,11 +117,12 @@ How it all fits together:
 - `StockfishMoveProvider` and `ArasanMoveProvider` adapt their native wrappers
   to one shared app-local session that owns ordered output delivery, UCI
   handshake/readiness barriers, serialized searches, bounded timeouts, and
-  coordinated off-main teardown.
+  coordinated off-main suspension or teardown.
 - `ScenarioReplayMoveProvider` supplies deterministic non-live-engine moves for
   scenario replay and scenario-backed tests.
-- The sibling `../StockfishEmbedded` project supplies engine moves over the UCI
-  protocol via `SFEngine`.
+- The sibling `../StockfishEmbedded` Swift package supplies engine moves over
+  the UCI protocol via `SFEngine`; SwiftChessDemo supplies the bundled NNUE URL
+  when it creates the engine.
 - The `ArasanEmbedded` Swift package supplies an alternative engine over the UCI
   protocol via `ArasanEngine`.
 
@@ -155,6 +162,12 @@ Data flow at a glance:
 - Engine-vs-engine uses the same UCI `go movetime` search policy as
   human-vs-engine play. The app derives its safety timeout from the selected
   move time, so there is no separate user-facing timeout setting.
+- Both native wrappers temporarily redirect process-wide C++ standard streams,
+  so the demo never runs them concurrently. At a cross-engine boundary it
+  suspends Stockfish after `bestmove`, runs Arasan, and then resumes the same
+  Stockfish instance. This preserves Stockfish's parsed NNUE network instead of
+  paying its load cost on every Stockfish turn; providers without a resumable
+  state still use terminal teardown and fresh construction.
 - Engine-vs-engine mode automatically claims ChessCore draw claims such as
   threefold repetition and the 50-move rule. Human-vs-engine games leave those
   claimable draws available to the player instead of ending automatically.
@@ -316,13 +329,14 @@ Sibling dependencies:
 - `../SwiftChessTools`: public sibling checkout that provides the `ChessCore`,
   `ChessUI`, and `ChessUCI` Swift package products.
 - `../StockfishEmbedded`: public sibling checkout that provides the
-  `SFEngine-iOS` Xcode project product.
+  local `SFEngine` Swift package product. Its ignored NNUE file is copied into
+  the app bundle by the Xcode project.
 - `ArasanEmbedded`: public Swift package dependency resolved from GitHub that
   provides the `ArasanEmbedded` product.
 - The parent folder can be any local directory; it does not need to be a Git
   repo.
-- Because the two sibling dependencies are source checkouts rather than pinned
-  package references, coordinated release notes should record the tested
-  SwiftChessTools and StockfishEmbedded tags. Release those siblings before
-  tagging SwiftChessDemo.
+- Because the two local package dependencies are sibling source checkouts rather
+  than pinned remote package references, coordinated release notes should record
+  the tested SwiftChessTools and StockfishEmbedded tags. Release those siblings
+  before tagging SwiftChessDemo.
 - Reference details live in `THIRD_PARTY.md`.

@@ -2,11 +2,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SIMULATOR_DESTINATION="${SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION:-platform=iOS Simulator,name=iPhone 17 Pro,OS=latest}"
+SIMULATOR_DESTINATION="${SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION:-platform=iOS Simulator,name=iPhone 17}"
 TEST_DERIVED_DATA="${SWIFT_CHESS_DEMO_TEST_DERIVED_DATA:-.build/xcode-swiftchessdemo}"
 RELEASE_DERIVED_DATA="${SWIFT_CHESS_DEMO_RELEASE_DERIVED_DATA:-.build/xcode-swiftchessdemo-release}"
 SOURCE_PACKAGES_DIR="${SWIFT_CHESS_DEMO_SOURCE_PACKAGES_DIR:-$TEST_DERIVED_DATA/SourcePackages}"
-EXPECTED_MARKETING_VERSION="1.3.2"
+EXPECTED_MARKETING_VERSION="1.4.0"
+STOCKFISH_EVALUATE_HEADER="../StockfishEmbedded/ThirdParty/Stockfish/src/evaluate.h"
 
 cd "$ROOT_DIR"
 
@@ -58,6 +59,23 @@ for dependency in ../SwiftChessTools ../StockfishEmbedded; do
   fi
 done
 
+stockfish_nnue_file="$(
+  sed -nE 's/^#define[[:space:]]+EvalFileDefaultName[[:space:]]+"([^"]+)".*/\1/p' \
+    "$STOCKFISH_EVALUATE_HEADER" | head -n 1
+)"
+stockfish_nnue_path="../StockfishEmbedded/Resources/NNUE/$stockfish_nnue_file"
+if [[ -z "$stockfish_nnue_file" || ! -f "$stockfish_nnue_path" ]]; then
+  printf '%s\n' \
+    'The Stockfish NNUE network is missing. Run ../StockfishEmbedded/Scripts/download-nnue.sh.' >&2
+  exit 1
+fi
+if ! grep -Fq "../StockfishEmbedded/Resources/NNUE/$stockfish_nnue_file" \
+  SwiftChessDemo.xcodeproj/project.pbxproj; then
+  printf 'The Xcode project does not bundle the current Stockfish network: %s\n' \
+    "$stockfish_nnue_file" >&2
+  exit 1
+fi
+
 printf 'Running app-hosted unit tests without simulator UI tests...\n'
 xcodebuild \
   -project SwiftChessDemo.xcodeproj \
@@ -81,6 +99,7 @@ xcodebuild \
   build
 
 app_info="$RELEASE_DERIVED_DATA/Build/Products/Release-iphoneos/SwiftChessDemo.app/Info.plist"
+app_bundle="$(dirname "$app_info")"
 if [[ ! -f "$app_info" ]]; then
   printf 'Release build did not produce the expected Info.plist: %s\n' "$app_info" >&2
   exit 1
@@ -108,6 +127,13 @@ fi
 if [[ "$marketing_version" != "$EXPECTED_MARKETING_VERSION" ]]; then
   printf 'Expected marketing version %s, found %s\n' \
     "$EXPECTED_MARKETING_VERSION" "$marketing_version" >&2
+  exit 1
+fi
+
+bundled_nnue="$app_bundle/$stockfish_nnue_file"
+if [[ ! -f "$bundled_nnue" ]] || ! cmp -s "$stockfish_nnue_path" "$bundled_nnue"; then
+  printf 'Release app does not contain the expected Stockfish network: %s\n' \
+    "$bundled_nnue" >&2
   exit 1
 fi
 

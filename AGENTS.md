@@ -4,7 +4,8 @@
 - `SwiftChessDemo/`: SwiftUI app entry point, views, and view models.
 - `../SwiftChessTools/`: sibling Swift package dependency that provides
   `ChessCore`, `ChessUI`, and `ChessUCI` command/parser helpers.
-- `../StockfishEmbedded/`: sibling Xcode project dependency that provides `SFEngine-iOS`.
+- `../StockfishEmbedded/`: sibling Swift package dependency that provides
+  `SFEngine`; its ignored NNUE file is copied into the built app bundle.
 - `ArasanEmbedded`: remote Swift package dependency that provides
   `ArasanEngine`.
 - `SwiftChessDemo.xcodeproj/`: Xcode project; assets live in `SwiftChessDemo/Assets.xcassets`.
@@ -26,6 +27,16 @@ Stockfish NNUE weights are required to run the engine. Initialize the sibling
 (cd ../StockfishEmbedded && Scripts/download-nnue.sh)
 ```
 Keep downloaded NNUE files out of commits.
+`SwiftChessDemo.xcodeproj` references the current file in that sibling checkout,
+copies it into the app bundle, and passes the resulting local URL to `SFEngine`.
+Update the project file reference whenever vendored Stockfish changes its
+required filename.
+
+Both embedded wrappers temporarily own process-wide C++ standard streams, so
+their active lifetimes must remain serialized. Engine-vs-engine switching
+suspends and resumes the existing Stockfish provider after completed searches
+to preserve its loaded NNUE state; providers without a resumable wrapper use
+terminal stop and recreation.
 
 The tracked Xcode project is intentionally independent of any Apple Developer
 Team. Physical-device builders should copy
@@ -39,9 +50,9 @@ unsigned generic-device builds do not require the local signing file.
 
 ## Build, Test, and Development Commands
 - Xcode: open `SwiftChessDemo.xcodeproj` and run the `SwiftChessDemo` app target.
-- CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build`
+- CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build`
 - Comprehensive local validation: `Scripts/validate.sh`
-- Targeted CLI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
+- Targeted CLI tests: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' -derivedDataPath .build/xcode-swiftchessdemo -clonedSourcePackagesDirPath .build/xcode-swiftchessdemo/SourcePackages test`
 - Hosted headless checks: `Scripts/github-ci.sh`
 - Optional manual GitHub Actions run: `Scripts/run-github-ci.sh [branch-or-tag]`
 

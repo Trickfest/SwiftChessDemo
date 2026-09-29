@@ -7,6 +7,27 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.4.0 - 2026-09-29
+
+### Changed
+
+- Replaced the sibling Stockfish Xcode-subproject/static-library link with the
+  local `StockfishEmbedded` Swift package product.
+- Bundle the verified sibling NNUE network with the app and provide its local
+  URL through StockfishEmbedded's public initializer, so built apps no longer
+  depend on an external runtime network-file setup.
+- Validated the source-only release with StockfishEmbedded 1.12.0 and the
+  complete local unit-test, generic iOS Release-build, and simulator UI gate.
+- Use the iPhone 17 simulator as the default local and hosted validation
+  destination; it remains overrideable through the documented environment
+  setting.
+
+### Fixed
+
+- Suspend and resume the existing Stockfish instance across Arasan turns in
+  engine-vs-engine play, avoiding a roughly 94 MB NNUE reparse on every switch
+  while still serializing the wrappers' process-wide C++ stream ownership.
+
 ## 1.3.2 - 2026-09-28
 
 ### Changed

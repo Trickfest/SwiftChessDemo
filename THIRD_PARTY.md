@@ -24,7 +24,9 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
 - StockfishEmbedded
   - Upstream: https://github.com/Trickfest/StockfishEmbedded
   - Path: `../StockfishEmbedded`
-  - Product: `SFEngine-iOS`
+  - Product: `SFEngine` (local Swift package)
+  - Runtime asset: the verified sibling NNUE file is copied into the app bundle
+    and supplied to the engine by local file URL.
   - License: GNU General Public License v3.0 in `../StockfishEmbedded/LICENSE`
   - Includes Stockfish, distributed under the GNU General Public License v3.0.
   - Distribution of a binary linked with this dependency should include the

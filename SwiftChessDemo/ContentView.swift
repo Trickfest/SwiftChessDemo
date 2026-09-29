@@ -11,6 +11,7 @@
 import SwiftUI
 import ChessCore
 import ChessUI
+import Foundation
 
 /// UI-facing representation of which side the human will play.
 ///

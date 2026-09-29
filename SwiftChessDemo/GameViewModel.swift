@@ -12,6 +12,7 @@ import Combine
 import ChessCore
 import ChessUI
 import ChessUCI
+import Foundation
 
 /// Coordinate-label choices exposed by the demo's in-game preferences.
 enum GameCoordinateLabelMode: String, CaseIterable, Identifiable, Sendable {
@@ -1008,7 +1009,10 @@ final class GameViewModel: ObservableObject {
         let moveConfiguration = nextEngineDemoMoveConfiguration()
         engineDemoLastMoveConfiguration = moveConfiguration
         if selectedEngineKind != moveConfiguration.engineKind {
-            selectedEngineProvider.stop()
+            // The native wrappers cannot own process-wide C++ streams at the
+            // same time. Stockfish's suspend path releases those streams while
+            // retaining its parsed NNUE network; other providers stop here.
+            selectedEngineProvider.suspend()
         }
         selectedEngineKind = moveConfiguration.engineKind
         engineMoveTime = moveConfiguration.moveTime

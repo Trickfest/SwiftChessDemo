@@ -151,5 +151,13 @@ protocol DemoEngineProvider: AnyObject {
 
     func startOrQueueSearch(_ request: EngineSearchRequest)
     func cancelAnalysisSearch(queueReplacement: EngineSearchRequest?)
+    func suspend()
     func stop()
+}
+
+extension DemoEngineProvider {
+    /// Providers without a reusable inactive state fall back to terminal teardown.
+    func suspend() {
+        stop()
+    }
 }

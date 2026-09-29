@@ -9,13 +9,35 @@
 //
 
 import ChessUCI
+import Foundation
+import SFEngine
+
+/// Resolves the NNUE network that the app copies from its sibling
+/// StockfishEmbedded checkout into the built app bundle.
+enum StockfishNetworkResource {
+    static var fileName: String { SFEngine.defaultNetworkFileName }
+
+    static func bundledFileURL(in bundle: Bundle = .main) -> URL? {
+        bundle.url(forResource: fileName, withExtension: nil)
+    }
+
+    /// Returns the expected bundle path even when the resource is missing so
+    /// SFEngine can report its normal nonfatal startup error through UCI.
+    static func requiredFileURL(in bundle: Bundle = .main) -> URL {
+        bundledFileURL(in: bundle)
+            ?? bundle.bundleURL.appendingPathComponent(fileName)
+    }
+}
 
 /// Stockfish transport adapter used by the shared provider session.
-private final class StockfishEngineTransport: EmbeddedEngineTransport, @unchecked Sendable {
+private final class StockfishEngineTransport: EmbeddedEngineSuspendableTransport, @unchecked Sendable {
     private let engine: SFEngine
 
     init(lineHandler: @escaping @Sendable (String) -> Void) {
-        engine = SFEngine(lineHandler: lineHandler)
+        engine = SFEngine(
+            networkFileURL: StockfishNetworkResource.requiredFileURL(),
+            lineHandler: lineHandler
+        )
         engine.start()
     }
 
@@ -25,6 +47,14 @@ private final class StockfishEngineTransport: EmbeddedEngineTransport, @unchecke
 
     nonisolated func stop() {
         engine.stop()
+    }
+
+    nonisolated func suspend() {
+        engine.suspend()
+    }
+
+    nonisolated func resume() {
+        engine.resume()
     }
 }
 
@@ -58,6 +88,10 @@ final class StockfishMoveProvider: DemoEngineProvider {
 
     func stop() {
         session.stop()
+    }
+
+    func suspend() {
+        session.suspend()
     }
 
     /// Returns the app-side safety timeout for a search request.

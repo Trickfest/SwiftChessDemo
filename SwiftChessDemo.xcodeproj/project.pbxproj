@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */; };
 		A5A100000000000000000001 /* ArasanEmbedded in Frameworks */ = {isa = PBXBuildFile; productRef = A5A100000000000000000003 /* ArasanEmbedded */; };
 		BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000004 /* ChessCore */; };
 		BBD7F42030051B6E0044C1DF /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000005 /* ChessUI */; };
@@ -16,16 +15,11 @@
 		D4D200000000000000000001 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		D4D200000000000000000002 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		D4D200000000000000000007 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+		F1E000000000000000000001 /* SFEngine in Frameworks */ = {isa = PBXBuildFile; productRef = F1E000000000000000000004 /* SFEngine */; };
+		F1E000000000000000000002 /* nn-134a887f4c8f.nnue in Resources */ = {isa = PBXBuildFile; fileRef = F1E000000000000000000003 /* nn-134a887f4c8f.nnue */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		8CAE44A4F81840E29C0B770B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
-			proxyType = 2;
-			remoteGlobalIDString = A1F000000000000000000010;
-			remoteInfo = "libSFEngine-iOS.a";
-		};
 		C0D100000000000000000008 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BBE95A352F09B47C003C9B73 /* Project object */;
@@ -40,22 +34,15 @@
 			remoteGlobalIDString = BBE95A3C2F09B47C003C9B73;
 			remoteInfo = SwiftChessDemo;
 		};
-		E53F0AD62BEE4267AD0821E8 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
-			proxyType = 1;
-			remoteGlobalIDString = A1F000000000000000000020;
-			remoteInfo = "SFEngine-iOS";
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; path = StockfishEmbedded.xcodeproj; sourceTree = "<group>"; };
 		BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftChessDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D100000000000000000001 /* SwiftChessDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F100000000000000000001 /* SwiftChessDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0A100000000000000000001 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		F0A100000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
+		F1E000000000000000000003 /* nn-134a887f4c8f.nnue */ = {isa = PBXFileReference; lastKnownFileType = file; name = "nn-134a887f4c8f.nnue"; path = "../StockfishEmbedded/Resources/NNUE/nn-134a887f4c8f.nnue"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -97,7 +84,7 @@
 				BBD7F42130051B6E0044C1DF /* ChessUCI in Frameworks */,
 				BBD7F42030051B6E0044C1DF /* ChessUI in Frameworks */,
 				BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */,
-				013DBCF49E3247448AAC9CB5 /* libSFEngine-iOS.a in Frameworks */,
+				F1E000000000000000000001 /* SFEngine in Frameworks */,
 				A5A100000000000000000001 /* ArasanEmbedded in Frameworks */,
 				D4D200000000000000000001 /* (null) in Frameworks */,
 				D4D200000000000000000002 /* (null) in Frameworks */,
@@ -123,18 +110,10 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		3944A0BA970E4E6DB1D68347 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
 		98B1DCE8F742402ABA9F1B83 /* Dependencies */ = {
 			isa = PBXGroup;
 			children = (
-				C14C7C944506437DA7F45D71 /* StockfishEmbedded */,
+				F1E000000000000000000003 /* nn-134a887f4c8f.nnue */,
 			);
 			name = Dependencies;
 			sourceTree = "<group>";
@@ -161,16 +140,6 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		C14C7C944506437DA7F45D71 /* StockfishEmbedded */ = {
-			isa = PBXGroup;
-			children = (
-				7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */,
-				3944A0BA970E4E6DB1D68347 /* Products */,
-			);
-			name = StockfishEmbedded;
-			path = ../StockfishEmbedded;
-			sourceTree = "<group>";
-		};
 		F0A100000000000000000003 /* Configurations */ = {
 			isa = PBXGroup;
 			children = (
@@ -194,7 +163,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				73D91B036EEC49F0AF27C841 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				BBE95A3F2F09B47C003C9B73 /* SwiftChessDemo */,
@@ -204,6 +172,7 @@
 				D4D200000000000000000004 /* ChessCore */,
 				D4D200000000000000000005 /* ChessUI */,
 				D4D200000000000000000006 /* ChessUCI */,
+				F1E000000000000000000004 /* SFEngine */,
 				A5A100000000000000000003 /* ArasanEmbedded */,
 			);
 			productName = SwiftChessDemo;
@@ -291,17 +260,12 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */,
+				F1E000000000000000000005 /* XCLocalSwiftPackageReference "../StockfishEmbedded" */,
 				A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BBE95A3E2F09B47C003C9B73 /* Products */;
 			projectDirPath = "";
-			projectReferences = (
-				{
-					ProductGroup = 3944A0BA970E4E6DB1D68347 /* Products */;
-					ProjectRef = 7E4D630C60AF4D49B8EAA520 /* StockfishEmbedded.xcodeproj */;
-				},
-			);
 			projectRoot = "";
 			targets = (
 				BBE95A3C2F09B47C003C9B73 /* SwiftChessDemo */,
@@ -311,21 +275,12 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXReferenceProxy section */
-		6695D73B1C9B4ABE995ACB95 /* libSFEngine-iOS.a */ = {
-			isa = PBXReferenceProxy;
-			fileType = archive.ar;
-			path = "libSFEngine-iOS.a";
-			remoteRef = 8CAE44A4F81840E29C0B770B /* PBXContainerItemProxy */;
-			sourceTree = BUILT_PRODUCTS_DIR;
-		};
-/* End PBXReferenceProxy section */
-
 /* Begin PBXResourcesBuildPhase section */
 		BBE95A3B2F09B47C003C9B73 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1E000000000000000000002 /* nn-134a887f4c8f.nnue in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -370,10 +325,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		73D91B036EEC49F0AF27C841 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			targetProxy = E53F0AD62BEE4267AD0821E8 /* PBXContainerItemProxy */;
-		};
 		C0D100000000000000000007 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = BBE95A3C2F09B47C003C9B73 /* SwiftChessDemo */;
@@ -517,10 +468,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-				);
 				INFOPLIST_FILE = SwiftChessDemo/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -531,18 +478,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-lc++",
-				);
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftChessDemo/SwiftChessDemo-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -558,10 +500,6 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-				);
 				INFOPLIST_FILE = SwiftChessDemo/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -572,18 +510,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-lc++",
-				);
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "SwiftChessDemo/SwiftChessDemo-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -603,7 +536,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -628,7 +561,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -648,17 +581,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -679,17 +608,13 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_TESTING_SEARCH_PATHS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/../StockfishEmbedded/Sources/SFEngine",
-				);
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.3.2;
+				MARKETING_VERSION = 1.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -748,6 +673,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../SwiftChessTools;
 		};
+		F1E000000000000000000005 /* XCLocalSwiftPackageReference "../StockfishEmbedded" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../StockfishEmbedded;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -782,6 +711,11 @@
 		D4D200000000000000000006 /* ChessUCI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ChessUCI;
+		};
+		F1E000000000000000000004 /* SFEngine */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1E000000000000000000005 /* XCLocalSwiftPackageReference "../StockfishEmbedded" */;
+			productName = SFEngine;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

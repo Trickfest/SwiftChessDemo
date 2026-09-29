@@ -17,6 +17,13 @@ protocol EmbeddedEngineTransport: AnyObject, Sendable {
     nonisolated func stop()
 }
 
+/// Optional transport capability for temporarily releasing process-wide
+/// stream ownership without discarding expensive engine state.
+protocol EmbeddedEngineSuspendableTransport: EmbeddedEngineTransport {
+    nonisolated func suspend()
+    nonisolated func resume()
+}
+
 /// Describes which startup handshake commands a concrete wrapper sends itself.
 enum EmbeddedEngineStartupSequence: Equatable {
     /// The provider must send `uci`; the wrapper sends no readiness probe.
@@ -44,11 +51,23 @@ final class EmbeddedEngineLifecycleCoordinator: @unchecked Sendable {
     private var teardownTail: Task<Void, Never>?
 
     func enqueueTeardown(of transport: any EmbeddedEngineTransport) {
+        enqueueLifecycleOperation {
+            transport.stop()
+        }
+    }
+
+    func enqueueSuspension(of transport: any EmbeddedEngineSuspendableTransport) {
+        enqueueLifecycleOperation {
+            transport.suspend()
+        }
+    }
+
+    private func enqueueLifecycleOperation(_ operation: @escaping @Sendable () -> Void) {
         lock.lock()
         let previousTeardown = teardownTail
         let teardown = Task.detached(priority: .utility) {
             await previousTeardown?.value
-            transport.stop()
+            operation()
         }
         teardownTail = teardown
         lock.unlock()
@@ -94,6 +113,7 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
 
     private var state: State = .idle
     private var transport: (any EmbeddedEngineTransport)?
+    private var isTransportSuspended = false
     private var activeRequest: EngineSearchRequest?
     private var queuedSearchRequest: EngineSearchRequest?
     private var isIgnoringActiveAnalysisOutput = false
@@ -188,8 +208,29 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
     }
 
     func stop() {
+        resetTransientState()
+        discardTransport()
+    }
+
+    func suspend() {
+        resetTransientState(invalidateTransportIdentity: false)
+
+        guard let transport else { return }
+        guard let suspendableTransport = transport as? any EmbeddedEngineSuspendableTransport else {
+            discardTransport()
+            return
+        }
+
+        isTransportSuspended = true
+        state = .idle
+        lifecycleCoordinator.enqueueSuspension(of: suspendableTransport)
+    }
+
+    private func resetTransientState(invalidateTransportIdentity: Bool = true) {
         searchToken = UUID()
-        engineInstanceID = UUID()
+        if invalidateTransportIdentity {
+            engineInstanceID = UUID()
+        }
         activeRequest = nil
         queuedSearchRequest = nil
         isIgnoringActiveAnalysisOutput = false
@@ -205,8 +246,6 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
         searchTimeoutTask = nil
         timeoutStopTask?.cancel()
         timeoutStopTask = nil
-
-        discardTransport()
     }
 
     private func startSearch(_ request: EngineSearchRequest) {
@@ -234,9 +273,17 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
     }
 
     private func startTransport() {
-        guard transport == nil, startupTask == nil, activeRequest != nil else { return }
+        guard startupTask == nil, activeRequest != nil else { return }
 
-        let engineInstanceID = UUID()
+        let suspendedTransport: (any EmbeddedEngineSuspendableTransport)?
+        if isTransportSuspended {
+            suspendedTransport = transport as? any EmbeddedEngineSuspendableTransport
+        } else {
+            suspendedTransport = nil
+        }
+        guard transport == nil || suspendedTransport != nil else { return }
+
+        let engineInstanceID = suspendedTransport == nil ? UUID() : self.engineInstanceID
         self.engineInstanceID = engineInstanceID
         state = .starting
 
@@ -257,6 +304,31 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
 
             let parser = UCIParser()
             do {
+                if let suspendedTransport {
+                    suspendedTransport.resume()
+
+                    guard !Task.isCancelled,
+                          self.engineInstanceID == engineInstanceID,
+                          self.activeRequest != nil
+                    else {
+                        self.lifecycleCoordinator.enqueueTeardown(of: suspendedTransport)
+                        self.transport = nil
+                        self.isTransportSuspended = false
+                        if self.engineInstanceID == engineInstanceID {
+                            self.startupTask = nil
+                            self.state = .idle
+                        }
+                        return
+                    }
+
+                    self.isTransportSuspended = false
+                    self.startupTask = nil
+                    self.state = .waitingForUCI
+                    self.startHandshakeTimeout(engineInstanceID: engineInstanceID)
+                    suspendedTransport.sendCommand(UCICommand.uci.string)
+                    return
+                }
+
                 let transport = try transportFactory { [weak self] line in
                     let parsedLine = parser.parse(line)
 
@@ -530,6 +602,7 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
     private func discardTransport() {
         guard let transport else { return }
         self.transport = nil
+        isTransportSuspended = false
         state = .idle
         engineInstanceID = UUID()
         lifecycleCoordinator.enqueueTeardown(of: transport)
