@@ -387,6 +387,34 @@ final class SwiftChessDemoUITests: XCTestCase {
         attachScreenshot(from: app, named: "SwiftChessDemo - Arasan versus Arasan six live plies")
     }
 
+    func testPieceSizeSliderRemembersEachSetInBothGameModes() throws {
+        for engineDemo in [false, true] {
+            let app = testApplication()
+            app.launch()
+            if engineDemo {
+                try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
+            }
+            try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+            try waitForGameBoardState(containing: "Piece size: 80%", in: app, named: "default Merida size")
+            let slider = app.sliders["Game.pieceSizeSlider"]
+            try scrollUntilHittable(slider, named: "piece size slider", in: app)
+            slider.adjust(toNormalizedSliderPosition: 0)
+            try waitForGameBoardState(containing: "Piece size: 50%", in: app, named: "smaller Merida pieces")
+
+            let picker = app.descendants(matching: .any)["Game.pieceSetPicker"].firstMatch
+            try scrollUntilHittable(picker, named: "piece set picker", in: app)
+            try select("Art Deco Monochrome", from: picker, in: app)
+            try waitForGameBoardState(containing: "Piece size: 85%", in: app, named: "independent Art Deco default")
+            try select("Sashite Merida", from: picker, in: app)
+            try waitForGameBoardState(containing: "Piece size: 50%", in: app, named: "remembered Merida override")
+            let reset = app.buttons["Game.resetPieceSize"]
+            try scrollUntilHittable(reset, named: "reset piece size", in: app).tap()
+            try waitForGameBoardState(containing: "Piece size: 80%", in: app, named: "restored Merida default")
+            XCTAssertFalse(reset.isEnabled)
+            app.terminate()
+        }
+    }
+
     func testGameCoordinateLabelPickerUpdatesBoardState() throws {
         let app = testApplication()
         app.launch()

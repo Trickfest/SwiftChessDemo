@@ -102,6 +102,14 @@ account-specific file uncommitted. Use it instead of changing the Team or
 Bundle Identifier fields in Xcode, which may write target-level overrides into
 the shared project file.
 
+The gameplay Preferences panel has a **Piece size** slider (50–100%) in both
+Human vs Engine and Engine vs Engine modes. It adjusts the selected piece set
+immediately, including moving pieces and promotion choices. **Default** restores
+that set's bundled size. Each set remembers its value during the current game;
+a new game starts with package defaults. This demonstrates SwiftChessTools'
+`ChessBoardModel.pieceRenderingScaleOverrides` API. SwiftChessDemo 1.5.0
+requires the sibling SwiftChessTools checkout at 1.3.0 or later.
+
 How it all fits together:
 - `ChessCore` owns board state, legal move generation, move application, PGN
   parsing, FEN serialization, SAN move records, game status, and draw claims.

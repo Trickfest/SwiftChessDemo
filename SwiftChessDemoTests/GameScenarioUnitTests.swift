@@ -1055,6 +1055,30 @@ final class GameViewModelAnalysisRefreshTests: XCTestCase {
 
 @MainActor
 final class GameViewModelEngineDemoTests: XCTestCase {
+    func testPieceSizingIsIndependentPerSetInBothGameModes() {
+        for mode in [DemoGameMode.humanVsEngine, .engineVsEngine] {
+            let harness = EngineAnalysisHarness()
+            let viewModel = harness.makeViewModel(gameMode: mode)
+            let initialFEN = viewModel.positionFEN
+            viewModel.pieceSet = .sashiteMerida
+            XCTAssertEqual(viewModel.pieceRenderingScale, 0.80)
+            XCTAssertFalse(viewModel.hasPieceRenderingScaleOverride)
+            viewModel.setPieceRenderingScale(0.76)
+            XCTAssertEqual(viewModel.boardModel.effectiveRenderingScale(for: .sashiteMerida), 0.76)
+            viewModel.pieceSet = .artDecoMonochrome
+            XCTAssertEqual(viewModel.pieceRenderingScale, 0.85)
+            viewModel.setPieceRenderingScale(0.92)
+            viewModel.pieceSet = .sashiteMerida
+            XCTAssertEqual(viewModel.pieceRenderingScale, 0.76)
+            viewModel.resetPieceRenderingScale()
+            XCTAssertEqual(viewModel.pieceRenderingScale, 0.80)
+            XCTAssertFalse(viewModel.hasPieceRenderingScaleOverride)
+            viewModel.pieceSet = .artDecoMonochrome
+            XCTAssertEqual(viewModel.pieceRenderingScale, 0.92)
+            XCTAssertEqual(viewModel.positionFEN, initialFEN)
+        }
+    }
+
     func testCoordinateLabelModesUpdateChessUIModel() {
         let harness = EngineAnalysisHarness()
         let viewModel = harness.makeViewModel()

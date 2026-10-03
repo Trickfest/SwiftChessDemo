@@ -279,6 +279,7 @@ struct GameView: View {
     private var boardAccessibilityValue: String {
         return "Pieces: \(viewModel.pieceSet.displayName), "
             + "Board: \(viewModel.boardTheme.displayName), "
+            + "Piece size: \(Int((viewModel.pieceRenderingScale * 100).rounded()))%, "
             + "Coordinates: \(viewModel.coordinateLabelMode.displayName), "
             + "Mode: \(viewModel.gameMode.displayName), "
             + "Suggestions: \(viewModel.suggestionArrowCount), "
@@ -343,6 +344,7 @@ struct GameView: View {
             if horizontalSizeClass == .regular {
                 VStack(spacing: 10) {
                     pieceSetControl
+                    pieceSizeControl
                     boardThemeControl
                     if !viewModel.isEngineDemoMode {
                         suggestionArrowsControl
@@ -375,6 +377,8 @@ struct GameView: View {
                     boardThemeControl
                 }
             }
+
+            pieceSizeControl
 
             if !viewModel.isEngineDemoMode {
                 suggestionArrowsControl
@@ -716,6 +720,37 @@ struct GameView: View {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("Game.pieceSetPicker")
         .accessibilityValue(viewModel.pieceSet.displayName)
+    }
+
+    private var pieceSizeControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Piece size")
+                Spacer()
+                Text("\(Int((viewModel.pieceRenderingScale * 100).rounded()))%")
+                    .monospacedDigit()
+                    .accessibilityIdentifier("Game.pieceSizeValue")
+                Button("Default") {
+                    viewModel.resetPieceRenderingScale()
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.hasPieceRenderingScaleOverride)
+                .accessibilityLabel("Reset piece size to default")
+                .accessibilityIdentifier("Game.resetPieceSize")
+            }
+            Slider(
+                value: Binding(
+                    get: { viewModel.pieceRenderingScale },
+                    set: { viewModel.setPieceRenderingScale($0) }
+                ),
+                in: ChessBoardModel.pieceRenderingScaleRange,
+                step: 0.01
+            )
+            .accessibilityLabel("Piece size for \(viewModel.pieceSet.displayName)")
+            .accessibilityValue("\(Int((viewModel.pieceRenderingScale * 100).rounded())) percent")
+            .accessibilityIdentifier("Game.pieceSizeSlider")
+        }
+        .font(.subheadline)
     }
 
     private var boardThemeControl: some View {

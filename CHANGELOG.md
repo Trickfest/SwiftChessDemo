@@ -7,6 +7,23 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.5.0 - 2026-10-03
+
+### Added
+
+- Added a gameplay Piece size slider (50–100%) and per-set Default reset in
+  both human-vs-engine and engine-vs-engine modes, using SwiftChessTools'
+  per-board rendering-scale overrides. Switching sets recalls their values
+  for the current game; board geometry and engine state are preserved.
+
+### Changed
+
+- Adopted SwiftChessTools 1.3.0's per-set rendering-scale API while retaining
+  the sibling source-package dependency.
+- Aligned the built marketing version and release-validation assertion with
+  1.5.0. Automated checks and physical iPhone, iPad, and Mac visual review
+  passed for the piece-size feature.
+
 ## 1.4.0 - 2026-09-29
 
 ### Changed

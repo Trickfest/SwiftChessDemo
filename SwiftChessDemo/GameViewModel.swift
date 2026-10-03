@@ -114,6 +114,27 @@ final class GameViewModel: ObservableObject {
             boardModel.pieceSet = pieceSet
         }
     }
+    /// Per-set sizing preferences for this game, owned by the demo app.
+    @Published private(set) var pieceRenderingScaleOverrides: [ChessPieceSet: CGFloat] = [:]
+
+    var pieceRenderingScale: CGFloat {
+        boardModel.effectiveRenderingScale(for: pieceSet)
+    }
+
+    var hasPieceRenderingScaleOverride: Bool {
+        pieceRenderingScaleOverrides[pieceSet] != nil
+    }
+
+    /// Changes artwork size without altering the position or engine session.
+    func setPieceRenderingScale(_ scale: CGFloat) {
+        boardModel.pieceRenderingScaleOverrides[pieceSet] = scale
+        pieceRenderingScaleOverrides = boardModel.pieceRenderingScaleOverrides
+    }
+
+    func resetPieceRenderingScale() {
+        boardModel.pieceRenderingScaleOverrides[pieceSet] = nil
+        pieceRenderingScaleOverrides = boardModel.pieceRenderingScaleOverrides
+    }
     /// ChessUI board theme currently rendered by the board.
     @Published var boardTheme: ChessBoardTheme {
         didSet {
