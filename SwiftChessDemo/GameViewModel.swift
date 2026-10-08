@@ -38,7 +38,8 @@ enum GameCoordinateLabelMode: String, CaseIterable, Identifiable, Sendable {
 ///
 /// Teaching focus:
 /// - ChessCore handles rules, legal moves, and game state.
-/// - ChessUI renders the board and consumes FEN updates.
+/// - ChessUI renders an independent copy of the selected position.
+/// - The live Game is the sole authority for gameplay and engine work.
 /// - DemoEngineProvider implementations isolate embedded engine UCI lifecycle.
 final class GameViewModel: ObservableObject {
     typealias EngineProviderFactory = @MainActor (@escaping DemoEngineEventHandler) -> any DemoEngineProvider
@@ -54,6 +55,14 @@ final class GameViewModel: ObservableObject {
     struct MoveAnnouncement: Equatable {
         let id = UUID()
         let message: String
+    }
+
+    /// An engine score for one searched position, retained for this game only.
+    struct RecordedEvaluation: Equatable {
+        let fen: String
+        let evaluation: ChessEvaluation
+        let engineKind: DemoEngineKind
+        let depth: Int?
     }
 
     /// Alert types shown by the GameView.
@@ -155,20 +164,24 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var engineMoveTime: EngineMoveTime
     /// Embedded engine used for future live replies and suggestion analysis.
     @Published private(set) var selectedEngineKind: DemoEngineKind
-    /// ChessCore status mirrored for SwiftUI rendering.
+    /// Authoritative live status, never the historical board's status.
     @Published private(set) var gameStatus: GameStatus
-    /// Side to move mirrored for SwiftUI rendering.
+    /// Authoritative live side to move.
     @Published private(set) var sideToMove: PieceColor
     /// Display-ready move records for ChessUI's move list.
     @Published private(set) var moveRecords: [ChessMoveRecord] = []
     /// Latest engine or automatic-scenario move to announce to assistive apps.
     @Published private(set) var moveAnnouncement: MoveAnnouncement?
-    /// Current move-list selection.
-    @Published var selectedMovePly: Int?
+    /// App-owned displayed ply. Zero represents the initial position.
+    @Published private(set) var selectedMovePly: Int? = 0
+    @Published private(set) var displayedGameStatus: GameStatus
+    @Published private(set) var displayedSideToMove: PieceColor
     /// Display-ready evaluation derived from parsed engine output.
     @Published private(set) var evaluation: ChessEvaluation
     /// Engine that produced the displayed live evaluation, retained until replacement output arrives.
     @Published private(set) var evaluationEngineKind: DemoEngineKind?
+    /// Scores are keyed by timeline ply, not move number or the browsing cursor.
+    @Published private var recordedEvaluations: [Int: RecordedEvaluation] = [:]
     /// Current FEN exposed to UI tests for black-box board-change assertions.
     @Published private(set) var positionFEN: String
     /// Current engine activity or recoverable engine status notice.
@@ -189,8 +202,10 @@ final class GameViewModel: ObservableObject {
 
     /// FEN serializer from ChessCore.
     private let fenSerializer = FENSerializer()
-    /// Builds SAN-backed move-list records from pre-move game state.
-    private let moveRecordBuilder = ChessMoveRecordBuilder()
+    /// Mutable authoritative game, kept independent of the displayed board copy.
+    private var liveGame: Game
+    /// Validated live move history; selection and explicit outcomes remain app-owned.
+    private var timeline: GameTimeline
     /// Optional deterministic move provider used for scenarios and scenario-backed UI tests.
     private let moveProvider: GameMoveProvider?
     /// Scenario being replayed, if this game was launched in scenario mode.
@@ -237,6 +252,8 @@ final class GameViewModel: ObservableObject {
     private var latestOpponentPrincipalVariationMove: Move?
     /// Exact active move-producing request, used to reject stale cross-engine events.
     private var activeOpponentSearchRequest: EngineSearchRequest?
+    /// Identity of the live analysis request; retained while browsing history.
+    private var activeAnalysisSearchRequest: EngineSearchRequest?
     /// Seeded generator used by deterministic engine-vs-engine stress mode.
     private var engineDemoRandomGenerator: SeededRandomGenerator
 
@@ -250,7 +267,8 @@ final class GameViewModel: ObservableObject {
         minimumEngineThinkingSeconds: TimeInterval? = nil,
         scenarioReplayDelaySeconds: TimeInterval? = nil,
         stockfishProviderFactory: @escaping EngineProviderFactory = { StockfishMoveProvider(eventHandler: $0) },
-        arasanProviderFactory: @escaping EngineProviderFactory = { ArasanMoveProvider(eventHandler: $0) }
+        arasanProviderFactory: @escaping EngineProviderFactory = { ArasanMoveProvider(eventHandler: $0) },
+        initialTimeline: GameTimeline? = nil
     ) {
         // Capture user configuration so the view model can enforce turn order.
         self.playerColor = playerColor
@@ -284,13 +302,23 @@ final class GameViewModel: ObservableObject {
         // Keep the selected ChessUI board theme available for menus and board updates.
         self.boardTheme = boardTheme
         // Use the scenario's starting position when replaying PGN fixtures.
-        let initialPosition = scenario?.initialPosition ?? Position.standard
+        // Scenario roots are already validated by their loader. An injected
+        // timeline supports deterministic model tests without mutating the UI.
+        let startingTimeline = scenario.map { try! GameTimeline(initialPosition: $0.initialPosition) }
+            ?? initialTimeline ?? (try! GameTimeline())
+        let initialPosition = startingTimeline.initialPosition
         self.initialPosition = initialPosition
-        let initialFen = FENSerializer().fen(from: initialPosition)
-        let initialGame = Game(position: initialPosition)
+        self.timeline = startingTimeline
+        let initialGame = try! startingTimeline.game(atPly: startingTimeline.moveCount)
+        self.liveGame = initialGame
+        self.moveRecords = startingTimeline.moveRecords
+        self.selectedMovePly = startingTimeline.moveCount
+        let initialFen = FENSerializer().fen(from: initialGame.position)
         self.positionFEN = initialFen
         self.gameStatus = initialGame.status
-        self.sideToMove = initialPosition.state.turn
+        self.sideToMove = initialGame.position.state.turn
+        self.displayedGameStatus = initialGame.status
+        self.displayedSideToMove = initialGame.position.state.turn
         self.evaluation = Self.initialEvaluation
         self.evaluationEngineKind = nil
         self.suggestionArrowCount = Self.initialSuggestionArrowCount
@@ -306,10 +334,11 @@ final class GameViewModel: ObservableObject {
         }
         // Let ChessUI report only legal moves for the side to move; the view
         // model still gates those moves to the human player's turn.
-        self.boardModel.interactionMode = self.moveProvider?.isAutomaticReplay == true || self.gameMode == .engineVsEngine
+        self.boardModel.interactionMode = self.moveProvider?.isAutomaticReplay == true
+            || self.gameMode == .engineVsEngine || !Self.isOngoing(initialGame.status)
             ? .readOnly
             : .legalMovesOnly
-        self.boardModel.game = initialGame
+        self.boardModel.setGame(initialGame)
     }
 
     /// Normal app runs use a visible thinking pause; UI tests can override it
@@ -500,6 +529,32 @@ final class GameViewModel: ObservableObject {
         Self.isOngoing(gameStatus)
     }
 
+    /// Selection is relative to this game's root, not FEN full-move numbers.
+    var liveMoveCount: Int { timeline.moveCount }
+
+    var isBrowsingHistory: Bool { selectedMovePly != liveMoveCount }
+
+    var livePositionFEN: String { fenSerializer.fen(from: liveGame.position) }
+
+    /// Historical scores must match the selected position exactly.
+    var displayedRecordedEvaluation: RecordedEvaluation? {
+        guard isBrowsingHistory, let ply = selectedMovePly,
+              let recorded = recordedEvaluations[ply], recorded.fen == positionFEN
+        else { return nil }
+        return recorded
+    }
+
+    var displayedEvaluation: ChessEvaluation {
+        isBrowsingHistory ? displayedRecordedEvaluation?.evaluation ?? .unavailable : evaluation
+    }
+
+    var recordedEvaluationDescription: String {
+        guard let recorded = displayedRecordedEvaluation else { return "Not evaluated" }
+        var description = "Recorded evaluation · \(recorded.engineKind.displayName)"
+        if let depth = recorded.depth { description += " · depth \(depth)" }
+        return description
+    }
+
     /// Human resign/confirmation UI is meaningful only for an active live game.
     var showsResignAction: Bool {
         isGameOngoing && moveProvider == nil && !isEngineDemoMode
@@ -542,7 +597,8 @@ final class GameViewModel: ObservableObject {
 
     /// Scenario-derived coordinate moves exposed to UI tests.
     var uiTestMoveCoordinates: [String] {
-        moveProvider?.uiTestMoveCoordinates(for: boardModel.game) ?? []
+        guard !isBrowsingHistory else { return [] }
+        return moveProvider?.uiTestMoveCoordinates(for: liveGame) ?? []
     }
 
     /// Scenario state appended to the board accessibility marker for UI tests.
@@ -599,13 +655,14 @@ final class GameViewModel: ObservableObject {
         guard canSwitchEngine else { return }
 
         selectedEngineProvider.stop()
+        activeAnalysisSearchRequest = nil
         selectedEngineKind = engineKind
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         boardModel.clearArrows()
         finishOpponentSearch()
         setEngineActivity(.idle)
-        if boardModel.game.position.state.turn == playerColor.opposite, moveProvider == nil {
+        if liveGame.position.state.turn == playerColor.opposite, moveProvider == nil {
             scheduleEngineMove()
         } else {
             refreshCurrentAnalysis(force: true)
@@ -619,11 +676,11 @@ final class GameViewModel: ObservableObject {
         engineMoveTime = moveTime
 
         if isEngineDemoMode {
-            setEngineDemoMoveTime(moveTime, for: boardModel.game.position.state.turn)
+            setEngineDemoMoveTime(moveTime, for: liveGame.position.state.turn)
             return
         }
 
-        if boardModel.game.position.state.turn == playerColor.opposite {
+        if liveGame.position.state.turn == playerColor.opposite {
             if moveProvider == nil,
                selectedEngineProvider.activePurpose == nil,
                pendingEngineMoveWorkItem == nil
@@ -809,9 +866,41 @@ final class GameViewModel: ObservableObject {
         }
     }
 
-    /// Selects a move-list record without changing the board position.
+    /// Move-list taps and navigation buttons share the same display-only path.
     func selectMoveRecord(_ record: ChessMoveRecord) {
-        selectedMovePly = record.ply
+        selectPosition(atPly: record.ply)
+    }
+
+    /// Browses without altering the live game, timers, searches, or playback state.
+    func selectPosition(atPly ply: Int) {
+        guard (0...liveMoveCount).contains(ply), ply != selectedMovePly else { return }
+        // Use the actual live Game at the end so an explicit draw claim is
+        // retained; a replayed prefix intentionally has only rules-derived state.
+        guard let displayedGame = ply == liveMoveCount
+            ? liveGame.copy() : try? timeline.game(atPly: ply)
+        else { return }
+        selectedMovePly = ply
+        installDisplayedGame(displayedGame)
+    }
+
+    func returnToLive() {
+        selectPosition(atPly: liveMoveCount)
+    }
+
+    /// One synchronization path keeps the board, highlight, and display status
+    /// aligned. Installing a copy also clears stale drags and promotion UI.
+    private func installDisplayedGame(_ game: Game, animatedMove: Move? = nil) {
+        boardModel.setGame(game)
+        positionFEN = boardModel.fen
+        displayedGameStatus = game.status
+        displayedSideToMove = game.position.state.turn
+        boardModel.interactionMode = isBrowsingHistory || isEngineDemoMode
+            || moveProvider?.isAutomaticReplay == true || !isGameOngoing
+            ? .readOnly : .legalMovesOnly
+        if let animatedMove {
+            boardModel.setFEN(positionFEN, animatedMove: animatedMove)
+        }
+        refreshSuggestionArrows()
     }
 
     /// Starts the game loop on first appearance.
@@ -830,9 +919,8 @@ final class GameViewModel: ObservableObject {
             return
         }
         // If the provider supplies the side to move, let it make the first move.
-        if moveProvider != nil, boardModel.game.position.state.turn != playerColor {
-            scheduleEngineMove()
-        } else if playerColor == .black {
+        if checkForGameEnd() { return }
+        if liveGame.position.state.turn != playerColor {
             scheduleEngineMove()
         } else {
             refreshCurrentAnalysis(force: false)
@@ -841,11 +929,12 @@ final class GameViewModel: ObservableObject {
 
     /// Receives a move from ChessUI when the user interacts with the UI.
     func handleUserMove(move: Move, isLegal: Bool) {
+        guard !isBrowsingHistory, isGameOngoing else { return }
         guard !isEngineDemoMode else { return }
         guard moveProvider?.isAutomaticReplay != true else { return }
         // Ignore illegal gestures, and ignore moves when it's not the user's turn.
         guard isLegal else { return }
-        guard boardModel.game.position.state.turn == playerColor else { return }
+        guard liveGame.position.state.turn == playerColor else { return }
         // A real user move invalidates analysis arrows for the previous position.
         cancelAnalysisSearch(clearSuggestions: true, queueReplacement: nil)
         // Apply the move in ChessCore and refresh the board UI.
@@ -866,7 +955,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        handleUserMove(move: move, isLegal: boardModel.game.legalMoves.contains(move))
+        handleUserMove(move: move, isLegal: liveGame.legalMoves.contains(move))
     }
 
     /// Ends the game immediately; used when the user resigns.
@@ -877,13 +966,15 @@ final class GameViewModel: ObservableObject {
 
     /// Requests a confirmation alert before resigning.
     func requestResignConfirmation() {
+        guard showsResignAction else { return }
         activeAlert = .resignConfirmation
     }
 
     /// Claims a draw offered by ChessCore's current game status.
     func claimDraw(_ claim: GameDrawClaim) {
+        guard !isBrowsingHistory, isGameOngoing else { return }
         do {
-            try boardModel.game.claimDraw(claim)
+            try liveGame.claimDraw(claim)
         } catch {
             endGame(title: "Draw Claim Error", message: "That draw claim is not available.")
             return
@@ -929,7 +1020,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        guard let move = moveProvider.nextMove(for: boardModel.game, ply: moveRecords.count) else {
+        guard let move = moveProvider.nextMove(for: liveGame, ply: moveRecords.count) else {
             endGame(title: "Scenario Error", message: "The scenario did not provide a legal move.")
             return
         }
@@ -958,36 +1049,31 @@ final class GameViewModel: ObservableObject {
         failureMessage: String = "The move is not legal in the current position.",
         announcesMove: Bool = false
     ) -> Bool {
-        let game = boardModel.game
+        guard isGameOngoing else { return false }
+        let wasFollowingLive = !isBrowsingHistory
+        let game = liveGame.copy()
+        var updatedTimeline = timeline
         let record: ChessMoveRecord
         do {
-            record = try moveRecordBuilder.record(
-                for: move,
-                in: game,
-                ply: moveRecords.count + 1
-            )
+            record = try updatedTimeline.append(move)
             // ChessCore updates internal rules state, move counters, and repetition history here.
             try game.applyLegal(move: move)
-            moveRecords.append(record)
-            selectedMovePly = record.ply
         } catch {
             endGame(title: failureTitle, message: failureMessage)
             return false
         }
 
-        // Serialize the new position into FEN for ChessUI.
-        let fen = fenSerializer.fen(from: game.position)
-        // Keep a black-box state marker available to UI tests.
-        positionFEN = fen
-        // ChessUI consumes the new FEN plus the move that produced it, then
-        // owns move animation and last-move highlighting. ChessUI preserves
-        // this same Game instance when the FEN matches its current position.
-        boardModel.setFEN(fen, animatedMove: move)
-        refreshGameSnapshot(from: game)
+        // Commit both authoritative representations only after both succeeded.
+        liveGame = game
+        timeline = updatedTimeline
+        moveRecords = timeline.moveRecords
+        if wasFollowingLive { selectedMovePly = liveMoveCount }
+        refreshGameSnapshot(animatedMove: wasFollowingLive ? move : nil)
 
         if announcesMove {
             moveAnnouncement = MoveAnnouncement(
-                message: "\(record.side.displayName) moved \(record.san)."
+                message: (isBrowsingHistory ? "Live game: " : "")
+                    + "\(record.side.displayName) moved \(record.san)."
             )
         }
         return true
@@ -1008,7 +1094,7 @@ final class GameViewModel: ObservableObject {
         }
 
         // Only search when it is the engine's turn.
-        guard boardModel.game.position.state.turn == playerColor.opposite else { return }
+        guard isGameOngoing, liveGame.position.state.turn == playerColor.opposite else { return }
 
         boardModel.clearArrows()
 
@@ -1019,13 +1105,14 @@ final class GameViewModel: ObservableObject {
         }
 
         let request = engineSearchRequest(purpose: .opponentMove)
+        activeAnalysisSearchRequest = nil
         beginOpponentSearch(engineKind: request.engineKind, request: request)
         selectedEngineProvider.startOrQueueSearch(request)
     }
 
     /// Requests the next engine-vs-engine move for the side to move.
     private func requestEngineDemoMove() {
-        guard isEngineDemoMode, Self.isOngoing(boardModel.game.status) else { return }
+        guard isEngineDemoMode, isGameOngoing else { return }
 
         let moveConfiguration = nextEngineDemoMoveConfiguration()
         engineDemoLastMoveConfiguration = moveConfiguration
@@ -1085,13 +1172,19 @@ final class GameViewModel: ObservableObject {
 
     /// Applies a deterministic provider move for scenario-backed UI tests.
     private func applyMoveProviderOpponentMove(_ moveProvider: GameMoveProvider) {
-        guard let move = moveProvider.nextMove(for: boardModel.game, ply: moveRecords.count) else {
+        guard let move = moveProvider.nextMove(for: liveGame, ply: moveRecords.count) else {
             endGame(title: "Scenario Error", message: "The scenario did not provide the expected reply.")
             return
         }
 
         if let providerEvaluation = Self.evaluationBeforeProviderReply {
             evaluation = providerEvaluation
+            // The existing deterministic UI-test fixture describes this exact
+            // pre-reply position, just as a real engine's score would.
+            recordedEvaluations[liveMoveCount] = RecordedEvaluation(
+                fen: livePositionFEN, evaluation: providerEvaluation,
+                engineKind: selectedEngineKind, depth: nil
+            )
         }
 
         scheduleOpponentMoveApplication(move: move)
@@ -1102,6 +1195,10 @@ final class GameViewModel: ObservableObject {
         switch event {
         case .output(let output, let request):
             guard shouldAcceptEngineEvent(for: request) else { return }
+
+            if case .info(let info) = output {
+                recordEvaluation(info, request: request)
+            }
 
             switch request.purpose {
             case .opponentMove:
@@ -1126,25 +1223,46 @@ final class GameViewModel: ObservableObject {
         }
     }
 
+    /// Save the primary exact score at the searched ply. A score for an
+    /// alternative MultiPV line or a search bound is not a position estimate.
+    private func recordEvaluation(_ info: UCIInfoLine, request: EngineSearchRequest) {
+        guard request.positionPly == liveMoveCount, request.fen == livePositionFEN,
+              (info.multipv ?? 1) == 1, info.scoreBound == .exact,
+              let score = info.whiteRelativeScore(sideToMove: request.sideToMove)
+        else { return }
+
+        recordedEvaluations[request.positionPly] = RecordedEvaluation(
+            fen: request.fen, evaluation: chessEvaluation(from: score),
+            engineKind: request.engineKind, depth: info.depth
+        )
+    }
+
     /// Ignores stale output from an engine, move time, or position that is no longer the active analysis target.
     private func shouldAcceptEngineEvent(for request: EngineSearchRequest) -> Bool {
         switch request.purpose {
         case .opponentMove:
             guard let activeOpponentSearchRequest else { return false }
             return request == activeOpponentSearchRequest
+                && request.fen == livePositionFEN
+                && request.sideToMove == liveGame.position.state.turn
+                && isGameOngoing
 
         case .suggestions:
-            guard request.engineKind == selectedEngineKind else { return false }
+            guard request.engineKind == selectedEngineKind,
+                  request == activeAnalysisSearchRequest, isGameOngoing
+            else { return false }
             return suggestionArrowCount > 0
                 && request.moveTimeMilliseconds == engineMoveTime.rawValue
-                && request.fen == fenSerializer.fen(from: boardModel.game.position)
+                && request.fen == livePositionFEN
 
         case .evaluation:
-            guard request.engineKind == selectedEngineKind else { return false }
+            guard request.engineKind == selectedEngineKind,
+                  request == activeAnalysisSearchRequest, isGameOngoing
+            else { return false }
             return suggestionArrowCount == 0
                 && showsEvaluationBar
                 && request.moveTimeMilliseconds == engineMoveTime.rawValue
-                && request.fen == fenSerializer.fen(from: boardModel.game.position)
+                && request.fen == livePositionFEN
         }
     }
 
@@ -1323,7 +1441,7 @@ final class GameViewModel: ObservableObject {
     private func updateOpponentFallbackMove(from info: UCIInfoLine) {
         guard info.multipv == nil || info.multipv == 1,
               let move = info.principalVariation.first,
-              boardModel.game.legalMoves.contains(move)
+              liveGame.legalMoves.contains(move)
         else {
             return
         }
@@ -1339,6 +1457,11 @@ final class GameViewModel: ObservableObject {
     ) {
         pendingEngineMoveWorkItem?.cancel()
         let engineKind = engineKind ?? selectedEngineKind
+        // A fast reply may wait for the visible thinking interval. Recheck the
+        // exact live request and position when that timer eventually fires.
+        let expectedRequest = activeOpponentSearchRequest
+        let expectedFEN = livePositionFEN
+        let expectedMoveCount = liveMoveCount
 
         let remainingDelay = isEngineDemoMode
             ? 0
@@ -1354,7 +1477,12 @@ final class GameViewModel: ObservableObject {
         }
 
         let workItem = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  self.activeOpponentSearchRequest == expectedRequest,
+                  self.livePositionFEN == expectedFEN,
+                  self.liveMoveCount == expectedMoveCount,
+                  self.isGameOngoing
+            else { return }
             self.pendingEngineMoveWorkItem = nil
             self.finishOpponentSearch()
             self.receiveEngineMove(move: move, engineKind: engineKind, statusNotice: statusNotice)
@@ -1421,6 +1549,7 @@ final class GameViewModel: ObservableObject {
 
     /// Cancels any running engine search without assuming it was active.
     private func stopEngineIfNeeded() {
+        activeAnalysisSearchRequest = nil
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         boardModel.clearArrows()
@@ -1446,14 +1575,15 @@ final class GameViewModel: ObservableObject {
         activeAlert = nil
 
         let game = Game(position: initialPosition)
-        let fen = fenSerializer.fen(from: initialPosition)
+        liveGame = game
+        timeline = try! GameTimeline(initialPosition: initialPosition)
 
         moveRecords.removeAll()
         moveAnnouncement = nil
-        selectedMovePly = nil
+        selectedMovePly = 0
         evaluation = Self.initialEvaluation
         evaluationEngineKind = nil
-        positionFEN = fen
+        recordedEvaluations.removeAll()
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         latestOpponentPrincipalVariationMove = nil
@@ -1463,15 +1593,13 @@ final class GameViewModel: ObservableObject {
         engineDemoLastMoveConfiguration = nil
         engineDemoRandomGenerator = SeededRandomGenerator(seed: engineDemoConfiguration.stress.seed)
         boardModel.clearArrows()
-        boardModel.setFEN(fen)
-        boardModel.game = game
-        refreshGameSnapshot(from: game)
+        refreshGameSnapshot()
         setEngineActivity(.idle)
     }
 
     /// Evaluates draw and win conditions using ChessCore state.
     private func checkForGameEnd() -> Bool {
-        switch boardModel.game.status {
+        switch liveGame.status {
         case .checkmate(let winner):
             let message = checkmateMessage(winner: winner)
             endGame(title: "Checkmate", message: message)
@@ -1489,7 +1617,7 @@ final class GameViewModel: ObservableObject {
             }
 
             do {
-                try boardModel.game.claimDraw(drawClaim)
+                try liveGame.claimDraw(drawClaim)
             } catch {
                 return false
             }
@@ -1523,12 +1651,16 @@ final class GameViewModel: ObservableObject {
 
     /// Starts or refreshes selected-engine analysis for the current player-turn position.
     private func refreshCurrentAnalysis(force: Bool) {
+        guard isGameOngoing else {
+            boardModel.clearArrows()
+            return
+        }
         guard !isEngineDemoMode else {
             boardModel.clearArrows()
             return
         }
 
-        guard boardModel.game.position.state.turn == playerColor else {
+        guard liveGame.position.state.turn == playerColor else {
             boardModel.clearArrows()
             return
         }
@@ -1553,7 +1685,7 @@ final class GameViewModel: ObservableObject {
         if force || selectedEngineProvider.activePurpose == .evaluation {
             startOrReplaceAnalysisSearch(request, clearSuggestions: false)
         } else if selectedEngineProvider.activePurpose == nil {
-            selectedEngineProvider.startOrQueueSearch(request)
+            startEngineSearch(request)
         }
     }
 
@@ -1561,7 +1693,7 @@ final class GameViewModel: ObservableObject {
     private func refreshSuggestionAnalysis(force: Bool) {
         guard suggestionArrowCount > 0 else { return }
 
-        let fen = fenSerializer.fen(from: boardModel.game.position)
+        let fen = livePositionFEN
         if !force, suggestedMovesPositionFEN == fen {
             refreshSuggestionArrows()
             return
@@ -1587,6 +1719,7 @@ final class GameViewModel: ObservableObject {
 
     /// Cancels or replaces a display-only analysis search, preserving opponent searches.
     private func cancelAnalysisSearch(clearSuggestions: Bool, queueReplacement: EngineSearchRequest?) {
+        activeAnalysisSearchRequest = queueReplacement
         selectedEngineProvider.cancelAnalysisSearch(queueReplacement: queueReplacement)
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
@@ -1609,6 +1742,7 @@ final class GameViewModel: ObservableObject {
 
     /// Starts one engine search after clearing stale suggestion state.
     private func startEngineSearch(_ request: EngineSearchRequest) {
+        activeAnalysisSearchRequest = request
         if request.purpose == .suggestions {
             suggestedMovesByRank.removeAll()
             suggestedMovesPositionFEN = nil
@@ -1618,7 +1752,7 @@ final class GameViewModel: ObservableObject {
         selectedEngineProvider.startOrQueueSearch(request)
     }
 
-    /// Captures the current board position and search settings in one immutable request.
+    /// Captures the authoritative live position, never the browsed board FEN.
     private func engineSearchRequest(
         purpose: EngineSearchPurpose,
         engineKind: DemoEngineKind? = nil,
@@ -1628,17 +1762,18 @@ final class GameViewModel: ObservableObject {
         return EngineSearchRequest(
             engineKind: engineKind ?? selectedEngineKind,
             purpose: purpose,
-            fen: fenSerializer.fen(from: boardModel.game.position),
-            sideToMove: boardModel.game.position.state.turn,
+            fen: livePositionFEN,
+            sideToMove: liveGame.position.state.turn,
             moveTimeMilliseconds: resolvedMoveTime.rawValue,
             multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1,
-            safetyTimeoutSeconds: nil
+            safetyTimeoutSeconds: nil,
+            positionPly: liveMoveCount
         )
     }
 
     /// Chooses the concrete engine and move time for the current engine-vs-engine move.
     private func nextEngineDemoMoveConfiguration() -> EngineDemoMoveConfiguration {
-        let side = boardModel.game.position.state.turn
+        let side = liveGame.position.state.turn
         var sideConfiguration = engineDemoConfiguration.sideConfiguration(for: side)
         let stress = engineDemoConfiguration.stress.normalized()
 
@@ -1688,7 +1823,7 @@ final class GameViewModel: ObservableObject {
     private func syncSelectedEngineToCurrentEngineDemoSideIfIdle() {
         guard isEngineDemoMode, !hasActiveEngineDemoWork else { return }
 
-        let configuration = engineDemoConfiguration.sideConfiguration(for: boardModel.game.position.state.turn)
+        let configuration = engineDemoConfiguration.sideConfiguration(for: liveGame.position.state.turn)
         selectedEngineKind = configuration.engineKind
         engineMoveTime = configuration.moveTime
     }
@@ -1696,14 +1831,14 @@ final class GameViewModel: ObservableObject {
     /// Creates deterministic suggestion arrows from a non-live-engine provider.
     private func applyMoveProviderSuggestionArrows(_ moveProvider: GameMoveProvider) {
         guard suggestionArrowCount > 0,
-              boardModel.game.position.state.turn == playerColor
+              liveGame.position.state.turn == playerColor
         else {
             boardModel.clearArrows()
             return
         }
 
         let rankedMoves = moveProvider.suggestionMoves(
-            for: boardModel.game,
+            for: liveGame,
             maxCount: Self.maximumSuggestionArrowCount
         )
 
@@ -1713,7 +1848,7 @@ final class GameViewModel: ObservableObject {
                 .enumerated()
                 .map { index, move in (index + 1, move) }
         )
-        suggestedMovesPositionFEN = fenSerializer.fen(from: boardModel.game.position)
+        suggestedMovesPositionFEN = livePositionFEN
         refreshSuggestionArrows()
     }
 
@@ -1731,7 +1866,9 @@ final class GameViewModel: ObservableObject {
 
     /// Maps ranked suggested moves into ChessUI board arrows.
     private func refreshSuggestionArrows() {
-        guard suggestionArrowCount > 0 else {
+        guard suggestionArrowCount > 0, !isBrowsingHistory,
+              suggestedMovesPositionFEN == livePositionFEN, isGameOngoing
+        else {
             boardModel.clearArrows()
             return
         }
@@ -1790,10 +1927,12 @@ final class GameViewModel: ObservableObject {
     }
 
     /// Refreshes published state derived from the backing ChessCore game.
-    private func refreshGameSnapshot(from game: Game? = nil) {
-        let game = game ?? boardModel.game
-        gameStatus = game.status
-        sideToMove = game.position.state.turn
+    private func refreshGameSnapshot(animatedMove: Move? = nil) {
+        gameStatus = liveGame.status
+        sideToMove = liveGame.position.state.turn
+        if !isBrowsingHistory {
+            installDisplayedGame(liveGame, animatedMove: animatedMove)
+        }
     }
 
     /// Maps reusable ChessUCI score data into ChessUI's display model.

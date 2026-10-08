@@ -154,10 +154,84 @@ struct GameView: View {
 
             boardWithEvaluation
 
+            moveNavigation
+
             if viewModel.showsUITestMoveControls {
                 uiTestMoveControls
             }
         }
+    }
+
+    /// Browsing displays the selected position's recorded score, if available.
+    private var displaysEvaluationBar: Bool {
+        viewModel.showsEvaluationBar
+    }
+
+    private var moveNavigation: some View {
+        VStack(spacing: 8) {
+            ChessMoveNavigationView(
+                selectedPly: viewModel.selectedMovePly ?? 0,
+                moveCount: viewModel.liveMoveCount,
+                // Window-wide arrows would conflict with the piece-size slider.
+                // Native controls remain keyboard/VoiceOver accessible.
+                keyboardShortcutsEnabled: false,
+                onSelectPly: viewModel.selectPosition(atPly:)
+            )
+            .buttonStyle(.bordered)
+
+            if viewModel.isBrowsingHistory {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        historyDescription
+                        Spacer(minLength: 0)
+                        returnToLiveButton
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        historyDescription
+                        returnToLiveButton
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(12)
+                .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                // Give the banner its own container. Without one, ViewThatFits
+                // can apply this identifier to the Return to Live button.
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("Game.historyBanner")
+            } else {
+                Text("Live · \(viewModel.liveMoveCount) recorded moves")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("Game.historyPosition")
+            }
+        }
+    }
+
+    private var historyDescription: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Position \(viewModel.selectedMovePly ?? 0) of \(viewModel.liveMoveCount)")
+                .font(.subheadline.weight(.semibold))
+                .accessibilityIdentifier("Game.historyPosition")
+            Text("History is read-only. Live play is unchanged.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if viewModel.showsEvaluationBar {
+                Text(viewModel.recordedEvaluationDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("Game.recordedEvaluation")
+            }
+        }
+    }
+
+    private var returnToLiveButton: some View {
+        Button("Return to Live", action: viewModel.returnToLive)
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: 44)
+            .accessibilityHint("Show the latest position and resume following live moves")
+            .accessibilityIdentifier("Game.returnToLive")
     }
 
     @ViewBuilder
@@ -180,8 +254,8 @@ struct GameView: View {
     @ViewBuilder
     private func boardWithEvaluationContent(sideLength: CGFloat) -> some View {
         if horizontalSizeClass == .regular {
-            HStack(alignment: .top, spacing: viewModel.showsEvaluationBar ? Self.regularEvaluationSpacing : 0) {
-                if viewModel.showsEvaluationBar {
+            HStack(alignment: .top, spacing: displaysEvaluationBar ? Self.regularEvaluationSpacing : 0) {
+                if displaysEvaluationBar {
                     verticalEvaluationBar
                         .frame(width: Self.verticalEvaluationBarWidth, height: sideLength)
                 }
@@ -191,8 +265,8 @@ struct GameView: View {
             }
             .frame(height: sideLength)
         } else {
-            VStack(spacing: viewModel.showsEvaluationBar ? Self.compactEvaluationSpacing : 0) {
-                if viewModel.showsEvaluationBar {
+            VStack(spacing: displaysEvaluationBar ? Self.compactEvaluationSpacing : 0) {
+                if displaysEvaluationBar {
                     horizontalEvaluationBar
                         .frame(width: sideLength, height: Self.horizontalEvaluationBarHeight)
                 }
@@ -214,7 +288,7 @@ struct GameView: View {
             return sideLength
         }
 
-        let evaluationHeight = viewModel.showsEvaluationBar
+        let evaluationHeight = displaysEvaluationBar
             ? Self.horizontalEvaluationBarHeight + Self.compactEvaluationSpacing
             : 0
         return sideLength + evaluationHeight
@@ -224,7 +298,7 @@ struct GameView: View {
         let availableWidth = max(width, 1)
 
         if horizontalSizeClass == .regular {
-            let reservedWidth = viewModel.showsEvaluationBar
+            let reservedWidth = displaysEvaluationBar
                 ? Self.verticalEvaluationBarWidth + Self.regularEvaluationSpacing
                 : 0
             return max(1, min(Self.regularMaxBoardAreaWidth - reservedWidth, availableWidth - reservedWidth))
@@ -262,18 +336,22 @@ struct GameView: View {
 
     private var verticalEvaluationBar: some View {
         ChessEvaluationBar(
-            evaluation: viewModel.evaluation,
+            evaluation: viewModel.displayedEvaluation,
             orientation: .vertical,
             whiteSide: viewModel.playerColor == .white ? .bottom : .top
         )
+        .accessibilityLabel(viewModel.isBrowsingHistory ? "Recorded evaluation" : "Evaluation")
+        .accessibilityHint(viewModel.isBrowsingHistory ? viewModel.recordedEvaluationDescription : "")
     }
 
     private var horizontalEvaluationBar: some View {
         ChessEvaluationBar(
-            evaluation: viewModel.evaluation,
+            evaluation: viewModel.displayedEvaluation,
             orientation: .horizontal,
             whiteSide: .leading
         )
+        .accessibilityLabel(viewModel.isBrowsingHistory ? "Recorded evaluation" : "Evaluation")
+        .accessibilityHint(viewModel.isBrowsingHistory ? viewModel.recordedEvaluationDescription : "")
     }
 
     private var boardAccessibilityValue: String {
@@ -287,6 +365,8 @@ struct GameView: View {
             + "Move time: \(viewModel.engineMoveTime.displayName), "
             + "Engine: \(viewModel.selectedEngineKind.displayName), "
             + "Evaluation engine: \(viewModel.evaluationEngineKind?.displayName ?? "None"), "
+            + "History: \(viewModel.isBrowsingHistory ? "Browsing" : "Live"), "
+            + "Selected ply: \(viewModel.selectedMovePly ?? 0), Live ply: \(viewModel.liveMoveCount), "
             + "Engine status: \(viewModel.engineActivity.accessibilityValue), "
             + engineDemoAccessibilityValue
             + viewModel.scenarioAccessibilityValue
@@ -626,8 +706,27 @@ struct GameView: View {
 
     private var statusDisplay: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if viewModel.isBrowsingHistory {
+                Text("Displayed position")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ChessGameStatusView(
+                    status: viewModel.displayedGameStatus,
+                    turn: viewModel.displayedSideToMove
+                )
+                .accessibilityIdentifier("Game.historicalStatus")
+                Divider()
+                Text("Live game")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
             if viewModel.engineActivity.message != nil {
                 engineStatusContent
+            } else if viewModel.isBrowsingHistory {
+                // Draw claims belong to live play; return there before acting.
+                ChessGameStatusView(status: viewModel.gameStatus, turn: viewModel.sideToMove)
+                    .accessibilityIdentifier("Game.liveStatus")
             } else {
                 ChessGameStatusView(
                     status: viewModel.gameStatus,
@@ -664,7 +763,7 @@ struct GameView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Engine status")
+        .accessibilityLabel(viewModel.isBrowsingHistory ? "Live engine status" : "Engine status")
         .accessibilityValue(viewModel.engineActivity.accessibilityValue)
         .accessibilityIdentifier("Game.engineStatus")
     }
@@ -675,6 +774,7 @@ struct GameView: View {
             selectedPly: viewModel.selectedMovePly,
             title: nil,
             layout: .horizontal,
+            scrollBehavior: .selectedMove,
             scrollIndicatorVisibility: .hidden
         ) { record in
             viewModel.selectMoveRecord(record)
@@ -694,7 +794,8 @@ struct GameView: View {
                 records: viewModel.moveRecords,
                 selectedPly: viewModel.selectedMovePly,
                 title: nil,
-                layout: .vertical
+                layout: .vertical,
+                scrollBehavior: .selectedMove
             ) { record in
                 viewModel.selectMoveRecord(record)
             }

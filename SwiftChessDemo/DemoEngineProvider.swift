@@ -10,6 +10,7 @@
 
 import ChessCore
 import ChessUCI
+import Foundation
 
 /// Shared event callback signature used by embedded engine providers.
 typealias DemoEngineEventHandler = @MainActor (EngineProviderEvent) -> Void
@@ -95,6 +96,10 @@ enum EngineSearchPurpose: Equatable, Sendable {
 struct EngineSearchRequest: Equatable, Sendable {
     static let safetyTimeoutGraceSeconds = 3
 
+    /// Distinguishes repeated searches of the same FEN, including after reset.
+    let id: UUID
+    /// Timeline position being searched, captured before a move is applied.
+    let positionPly: Int
     let engineKind: DemoEngineKind
     let purpose: EngineSearchPurpose
     let fen: String
@@ -110,8 +115,12 @@ struct EngineSearchRequest: Equatable, Sendable {
         sideToMove: PieceColor,
         moveTimeMilliseconds: Int,
         multiPVCount: Int,
-        safetyTimeoutSeconds: Int? = nil
+        safetyTimeoutSeconds: Int? = nil,
+        id: UUID = UUID(),
+        positionPly: Int = 0
     ) {
+        self.id = id
+        self.positionPly = positionPly
         self.engineKind = engineKind
         self.purpose = purpose
         self.fen = fen

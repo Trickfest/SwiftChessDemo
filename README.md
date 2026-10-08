@@ -22,6 +22,7 @@ checkouts and Swift package dependency locally.
 
 The demo is designed to show the same app-owned chess experience adapting
 between regular-width iPad layouts and compact iPhone layouts.
+These screenshots predate the history-navigation controls described below.
 
 <p>
   <img src="Images/swiftchessdemo-ipad-gameplay.jpg" alt="SwiftChessDemo gameplay on iPad Pro, showing the board, evaluation bar, preferences, and move list." width="640">
@@ -110,13 +111,69 @@ a new game starts with package defaults. This demonstrates SwiftChessTools'
 `ChessBoardModel.pieceRenderingScaleOverrides` API. SwiftChessDemo 1.5.0
 requires the sibling SwiftChessTools checkout at 1.3.0 or later.
 
+### Game history navigation
+
+The demo uses the sibling SwiftChessTools APIs
+`GameTimeline`, `ChessMoveNavigationView`, selected-move scrolling, and
+`ChessBoardModel.setGame(_:)`. Use matching source checkouts that include these
+APIs; SwiftChessTools 1.3.0 and earlier do not provide them.
+
+In both **Human vs Engine** and **Engine vs Engine**, use the four navigation
+buttons to go to the initial position, previous move, next move, or current
+end. Click or tap a move to see its resulting position. The move list keeps
+the selected move visible, including after more live moves arrive.
+
+Earlier positions are explicitly read-only. The history indicator shows which
+position you are viewing and provides **Return to Live**. Browsing does not
+pause engines, start analysis of an old position, take a move back, or replace
+the game. A pending opponent reply may finish while you browse, and automatic
+engine-vs-engine play continues unless you explicitly press Pause. Your selected
+historical position stays put; returning to the end resumes live following.
+Human moves require returning to the live end.
+
+Historical status describes the displayed position, while engine activity and
+game results remain explicitly live. With Evaluation enabled, the bar shows
+the score recorded for the selected historical position, labelled with its
+engine and search depth when supplied. Positions without a recorded score show
+`--` and **Not evaluated**. Returning to Live restores the latest live score.
+Suggestion arrows remain hidden while browsing, then return when appropriate.
+Coordinates, piece size, piece set, theme, and perspective remain unchanged.
+Completed games remain browsable; **Play Again** resets engine-demo history to
+its initial position and retains the current display/demo preferences.
+
+Recorded evaluations are captured during ordinary play or live analysis and
+kept in memory for the current game. The app retains the latest exact score
+from the primary engine line at the searched position, before its move is
+applied, normalized so positive scores favor White. Engine-vs-engine history
+can contain estimates from different engines and search budgets. Browsing
+does not run a new search or fill missing scores; deterministic scenario replay
+normally has no evaluations. Play Again clears the previous game's scores.
+
+The app deliberately leaves the shared navigation widget's keyboard shortcuts
+off so arrows remain available to the piece-size slider and other controls.
+
+Implementation pattern for package consumers:
+
+- Keep one authoritative `Game` for rules, engines, claims, and results.
+- Keep a `GameTimeline` and selected ply for recorded-position browsing.
+- Install an independent full-game copy in the board with `setGame(_:)`;
+  never use the historical board's FEN to validate a live engine reply.
+- Give each engine request a distinct identity, so an old reply cannot match
+  a new search merely because its FEN and settings are identical.
+- Capture the searched ply and cache its normalized primary score, FEN, engine,
+  and depth in app-owned state. Use only a matching record for historical
+  display; an absent score remains unavailable.
+- Route move-list taps and navigation buttons through the same app-owned
+  selection method. Neither ChessUI nor GameTimeline owns engine lifecycle.
+
 How it all fits together:
 - `ChessCore` owns board state, legal move generation, move application, PGN
   parsing, FEN serialization, SAN move records, game status, and draw claims.
 - `ChessUI` renders the board and emits user move gestures. It also supplies
   the visible chessboard components used by the demo: piece sets, board
   themes, coordinate labels, `ChessGameStatusView`, `ChessMoveListView`,
-  `ChessEvaluationBar`, and app-supplied `ChessBoardArrow` suggestions.
+  `ChessEvaluationBar`, `ChessMoveNavigationView`, and app-supplied
+  `ChessBoardArrow` suggestions.
 - `ChessUCI` formats UCI command strings and parses `info` and `bestmove`
   lines into typed values.
 - SwiftChessDemo owns app policy: view-model state, engine timing, move-provider
@@ -136,8 +193,11 @@ How it all fits together:
 
 Data flow at a glance:
 - User moves on the board -> `ChessUI` -> `GameViewModel.handleUserMove`.
-- The move is validated/applied in `ChessCore`, then serialized to FEN.
-- FEN is pushed back into `ChessUI` to update the board UI.
+- The move is validated/applied to the authoritative live `ChessCore.Game`
+  and appended to the recorded timeline.
+- At the live end the board receives the updated live game; while browsing,
+  it keeps the selected reconstructed prefix. `positionFEN` describes the
+  display; `livePositionFEN` describes engine authority.
 - Terminal game state and claimable draws are read from ChessCore's
   `Game.status` and draw-claim APIs, then rendered with `ChessGameStatusView`.
 - Legal moves are also captured as `ChessMoveRecord` values before they are
@@ -218,13 +278,14 @@ Key files to read:
   activity and timeout notices, optional evaluation-bar display, in-game engine
   move-time control, selectable move-suggestion arrows, engine-vs-engine
   playback controls, terminal-result handling, compact horizontal move-list
-  layout on iPhone, and navigation flow.
+  layout on iPhone, and read-only history navigation in both gameplay modes.
 - `SwiftChessDemo/GameViewModel.swift`: display state, safe move application,
   provider event handling, minimum-visible-thinking timing, recoverable timeout
   fallback, evaluation normalization, selected-engine MultiPV suggestion
   mapping, engine-vs-engine loop control, automatic draw-claim policy for
   engine-vs-engine games, engine-demo replay reset behavior, stress-mode
-  randomization, and ChessCore game-status integration.
+  randomization, live/displayed-game separation, and ChessCore game-status
+  integration.
 - `SwiftChessDemo/EngineDemoConfiguration.swift`: value types that describe
   engine-vs-engine mode, per-side engine/move-time settings, pacing, and
   optional deterministic stress randomization.
@@ -305,6 +366,12 @@ Scripts/validate.sh
   engine-demo controls off the setup screen, then launches into a paused game
   with demo-only playback controls visible and the normal live-game engine
   picker hidden.
+- History model tests verify read-only browsing, live replies while an older
+  position stays selected, return-to-live play, explicit draw outcomes, reset,
+  settings retention, and rejection of stale same-position engine requests.
+  UI coverage exercises pending replies, direct selection and long-list
+  scrolling, display preferences, completed games, and real-engine demo
+  playback while browsing. Engine-specific best moves are not assumed.
 - Evaluation-bar UI coverage can set `SWIFT_CHESS_DEMO_UI_TEST_EVALUATION`
   values such as `cp:85`, `mate:white:3`, or `mate:black:2` so the visual state
   is deterministic without live engine analysis.
@@ -348,3 +415,16 @@ Sibling dependencies:
   the tested SwiftChessTools and StockfishEmbedded tags. Release those siblings
   before tagging SwiftChessDemo.
 - Reference details live in `THIRD_PARTY.md`.
+
+## Future Ideas
+
+These are candidates, not scheduled work or release requirements:
+
+- An in-app picker for deterministic bundled scenarios.
+- Independent suggestion search-time controls and configurable safety timeouts.
+- More scenario coverage for unusual endgames, draw claims, promotions, and
+  long games, plus short README videos.
+- Additional move providers beyond the current Stockfish and Arasan adapters.
+- App Store distribution, subject to separate approval and licensing review.
+
+Reusable rules/UI stay in SwiftChessTools; engine lifecycle remains app-owned.

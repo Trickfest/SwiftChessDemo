@@ -644,7 +644,7 @@ final class GameViewModelEngineActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedEngineKind, DemoEngineKind.stockfish)
     }
 
-    func testMoveApplicationPreservesChessCoreGameIdentityAndHistory() throws {
+    func testMoveApplicationKeepsDisplayedCopiesIsolatedAndPreservesHistory() throws {
         let harness = EngineAnalysisHarness()
         let viewModel = harness.makeViewModel()
         let game = viewModel.boardModel.game
@@ -653,8 +653,9 @@ final class GameViewModelEngineActivityTests: XCTestCase {
         viewModel.startIfNeeded()
         viewModel.handleUserMove(move: move, isLegal: true)
 
-        XCTAssertTrue(viewModel.boardModel.game === game)
-        XCTAssertEqual(game.moveHistory, [move])
+        XCTAssertFalse(viewModel.boardModel.game === game)
+        XCTAssertEqual(game.moveHistory, [])
+        XCTAssertEqual(viewModel.boardModel.game.moveHistory, [move])
         XCTAssertEqual(viewModel.moveRecords.map(\.san), ["e4"])
     }
 
@@ -1264,8 +1265,9 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testEngineDemoAutoClaimsThreefoldRepetitionOnStart() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
-        viewModel.boardModel.game = try Self.claimableThreefoldGame()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine, initialTimeline: try Self.claimableThreefoldTimeline()
+        )
 
         viewModel.startIfNeeded()
 
@@ -1277,8 +1279,10 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testEngineDemoAutoClaimsFiftyMoveRuleOnStart() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
-        viewModel.boardModel.game = try Self.game(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            initialTimeline: try Self.timeline(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+        )
 
         viewModel.startIfNeeded()
 
@@ -1290,8 +1294,9 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testEngineDemoPrefersThreefoldWhenMultipleDrawClaimsAreAvailable() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
-        viewModel.boardModel.game = try Self.claimableThreefoldGame(halfmoveClock: 92)
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine, initialTimeline: try Self.claimableThreefoldTimeline(halfmoveClock: 92)
+        )
 
         viewModel.startIfNeeded()
 
@@ -1301,8 +1306,9 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testEngineDemoTerminalStateExposesPlayAgainWithoutStaleWork() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .engineVsEngine)
-        viewModel.boardModel.game = try Self.claimableThreefoldGame()
+        let viewModel = harness.makeViewModel(
+            gameMode: .engineVsEngine, initialTimeline: try Self.claimableThreefoldTimeline()
+        )
 
         viewModel.startIfNeeded()
 
@@ -1335,9 +1341,9 @@ final class GameViewModelEngineDemoTests: XCTestCase {
         )
         let viewModel = harness.makeViewModel(
             gameMode: .engineVsEngine,
-            engineDemoConfiguration: initialConfiguration
+            engineDemoConfiguration: initialConfiguration,
+            initialTimeline: try GameTimeline(moves: ["f2f3", "e7e5", "g2g4", "d8h4"].map(Move.init(string:)))
         )
-        viewModel.boardModel.game = try Self.claimableThreefoldGame()
 
         viewModel.startIfNeeded()
         viewModel.setEngineDemoEngineKind(.arasan, for: .white)
@@ -1351,7 +1357,7 @@ final class GameViewModelEngineDemoTests: XCTestCase {
         XCTAssertEqual(viewModel.positionFEN, standardFEN)
         XCTAssertEqual(viewModel.boardModel.fen, standardFEN)
         XCTAssertEqual(viewModel.moveRecords, [])
-        XCTAssertNil(viewModel.selectedMovePly)
+        XCTAssertEqual(viewModel.selectedMovePly, 0)
         XCTAssertEqual(viewModel.evaluation, .unavailable)
         XCTAssertEqual(viewModel.engineDemoRunState, .playing)
         XCTAssertFalse(viewModel.canRestartEngineDemo)
@@ -1375,9 +1381,9 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testHumanVsEngineDoesNotAutoClaimThreefoldRepetition() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)
-        let game = try Self.claimableThreefoldGame()
-        viewModel.boardModel.game = game
+        let viewModel = harness.makeViewModel(
+            gameMode: .humanVsEngine, initialTimeline: try Self.claimableThreefoldTimeline()
+        )
 
         viewModel.startIfNeeded()
 
@@ -1387,8 +1393,10 @@ final class GameViewModelEngineDemoTests: XCTestCase {
 
     func testHumanVsEngineDoesNotAutoClaimFiftyMoveRule() throws {
         let harness = EngineAnalysisHarness()
-        let viewModel = harness.makeViewModel(gameMode: .humanVsEngine)
-        viewModel.boardModel.game = try Self.game(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+        let viewModel = harness.makeViewModel(
+            gameMode: .humanVsEngine,
+            initialTimeline: try Self.timeline(from: "4k3/8/8/8/8/8/Q7/4K3 w - - 100 1")
+        )
 
         viewModel.startIfNeeded()
 
@@ -1465,25 +1473,428 @@ final class GameViewModelEngineDemoTests: XCTestCase {
         XCTAssertGreaterThan(Set(chosenMoveTimes).count, 1)
     }
 
-    private static func claimableThreefoldGame(halfmoveClock: Int = 0) throws -> Game {
-        let game = try game(from: "8/8/8/8/8/6k1/8/R3K3 w - - \(halfmoveClock) 1")
-        try applyQuietKingCycle(to: game)
-        try applyQuietKingCycle(to: game)
-        XCTAssertTrue(game.drawClaims.contains(.threefoldRepetition))
-        return game
+    private static func claimableThreefoldTimeline(halfmoveClock: Int = 0) throws -> GameTimeline {
+        var timeline = try timeline(from: "8/8/8/8/8/6k1/8/R3K3 w - - \(halfmoveClock) 1")
+        for coordinate in ["e1d1", "g3f3", "d1e1", "f3g3", "e1d1", "g3f3", "d1e1", "f3g3"] {
+            try timeline.append(Move(string: coordinate))
+        }
+        XCTAssertTrue(try timeline.game(atPly: timeline.moveCount).drawClaims.contains(.threefoldRepetition))
+        return timeline
     }
 
-    private static func game(from fen: String) throws -> Game {
-        Game(position: try FENSerializer().position(from: fen))
+    private static func timeline(from fen: String) throws -> GameTimeline {
+        try GameTimeline(initialPosition: FENSerializer().position(from: fen))
+    }
+}
+
+@MainActor
+final class GameViewModelHistoryTests: XCTestCase {
+    func testRecordedScoresFollowSearchedPlyAndEngineWithoutStartingHistoricalSearches() throws {
+        let harness = EngineAnalysisHarness()
+        var configuration = Self.fastDemo
+        configuration.black.engineKind = .arasan
+        let model = harness.makeViewModel(gameMode: .engineVsEngine, engineDemoConfiguration: configuration)
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.stepEngineDemo()
+        XCTAssertEqual(harness.stockfish.requireLastRequest().positionPly, 0)
+        harness.stockfish.emitInfo(score: .centipawns(40), depth: 11)
+        harness.stockfish.emitBestMove("e2e4")
+        model.stepEngineDemo()
+        let blackRequest = harness.arasan.requireLastRequest()
+        XCTAssertEqual(blackRequest.positionPly, 1)
+        harness.arasan.emitInfo(score: .centipawns(75), depth: 12)
+        harness.arasan.emitBestMove("e7e5")
+        let requestCount = harness.stockfish.requests.count + harness.arasan.requests.count
+
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(40))
+        XCTAssertEqual(model.displayedRecordedEvaluation?.engineKind, .stockfish)
+        XCTAssertEqual(model.recordedEvaluationDescription, "Recorded evaluation · Stockfish · depth 11")
+        model.selectPosition(atPly: 1)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(-75))
+        XCTAssertEqual(model.displayedRecordedEvaluation?.fen, blackRequest.fen)
+        XCTAssertEqual(model.displayedRecordedEvaluation?.fen, model.positionFEN)
+        XCTAssertEqual(model.displayedRecordedEvaluation?.engineKind, .arasan)
+        XCTAssertEqual(model.recordedEvaluationDescription, "Recorded evaluation · Arasan · depth 12")
+        model.setEvaluationBarVisible(false)
+        model.setEvaluationBarVisible(true)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(-75))
+        model.returnToLive()
+        XCTAssertEqual(model.displayedEvaluation, model.evaluation)
+        XCTAssertNil(model.displayedRecordedEvaluation)
+        XCTAssertEqual(harness.stockfish.requests.count + harness.arasan.requests.count, requestCount)
     }
 
-    private static func applyQuietKingCycle(to game: Game) throws {
-        try applyLegalCoordinates(["e1d1", "g3f3", "d1e1", "f3g3"], to: game)
+    func testHumanAnalysisAndOpponentMateScoresRemainAttachedToTheirPositions() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        harness.stockfish.emitInfo(score: .centipawns(25), depth: 10)
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        harness.stockfish.emitInfo(score: .mate(-3), depth: 15)
+        harness.stockfish.emitBestMove("e7e5")
+        harness.stockfish.emitInfo(score: .centipawns(80), depth: 13)
+        let requestCount = harness.stockfish.requests.count
+
+        model.selectPosition(atPly: 1)
+        XCTAssertEqual(model.displayedEvaluation, .mate(moves: 3, side: .white))
+        XCTAssertEqual(model.displayedRecordedEvaluation?.depth, 15)
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(25))
+        harness.stockfish.emitInfo(score: .centipawns(95), depth: 14)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(25))
+        XCTAssertEqual(model.evaluation, .centipawns(95))
+        model.returnToLive()
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(95))
+        XCTAssertEqual(harness.stockfish.requests.count, requestCount)
     }
 
-    private static func applyLegalCoordinates(_ coordinates: [String], to game: Game) throws {
-        for coordinate in coordinates {
-            try game.applyLegal(move: Move(string: coordinate))
+    func testRecordedEvaluationUsesPrimaryExactScoreAndRetainsItAcrossEngineChanges() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.setSuggestionArrowCount(3)
+        harness.stockfish.emitInfo(score: .centipawns(35), move: "e2e4", multipv: 1, depth: 9)
+        harness.stockfish.emitInfo(score: .centipawns(-90), move: "d2d4", multipv: 2, depth: 9)
+        harness.stockfish.emitInfo(score: .centipawns(200), depth: 10, scoreBound: .lowerbound)
+        harness.stockfish.emitInfo(score: .centipawns(-200), depth: 10, scoreBound: .upperbound)
+        let oldRequest = harness.stockfish.requireLastRequest()
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(35))
+        XCTAssertEqual(model.displayedRecordedEvaluation?.depth, 9)
+        // Output from an obsolete search cannot overwrite the recorded root.
+        harness.stockfish.emitInfo(score: .centipawns(999), request: oldRequest)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(35))
+        model.setSelectedEngineKind(.arasan)
+        XCTAssertEqual(model.displayedRecordedEvaluation?.engineKind, .stockfish)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(35))
+    }
+
+    func testMissingHistoricalEvaluationDoesNotBorrowAdjacentScore() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(gameMode: .engineVsEngine, engineDemoConfiguration: Self.fastDemo)
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.stepEngineDemo()
+        harness.stockfish.emitBestMove("e2e4") // No score was reported for the root.
+        model.stepEngineDemo()
+        harness.stockfish.emitInfo(score: .centipawns(80))
+        harness.stockfish.emitBestMove("e7e5")
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .unavailable)
+        XCTAssertNil(model.displayedRecordedEvaluation)
+        XCTAssertEqual(model.recordedEvaluationDescription, "Not evaluated")
+        model.selectPosition(atPly: 1)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(-80))
+    }
+
+    func testRecordedBlackRootScoreUsesTimelinePlyInsteadOfFullMoveNumber() throws {
+        let root = try FENSerializer().position(from: "7k/8/8/8/8/8/p7/7K b - - 0 42")
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(
+            gameMode: .engineVsEngine, engineDemoConfiguration: Self.fastDemo,
+            initialTimeline: try GameTimeline(initialPosition: root)
+        )
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.stepEngineDemo()
+        XCTAssertEqual(harness.stockfish.requireLastRequest().positionPly, 0)
+        harness.stockfish.emitInfo(score: .centipawns(70), depth: 8)
+        harness.stockfish.emitBestMove("a2a1q")
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(-70))
+        XCTAssertEqual(model.displayedRecordedEvaluation?.fen, FENSerializer().fen(from: root))
+    }
+
+    func testPendingOpponentReplyUsesLiveGameAndLeavesHistoricalSelectionUnchanged() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        let request = harness.stockfish.requireLastRequest()
+        let requestCount = harness.stockfish.requests.count
+        let cancelCount = harness.stockfish.cancelAnalysisCount
+        model.selectPosition(atPly: 0)
+
+        XCTAssertTrue(model.isBrowsingHistory)
+        XCTAssertEqual(model.boardModel.interactionMode, .readOnly)
+        XCTAssertEqual(model.displayedSideToMove, .white)
+        XCTAssertEqual(model.sideToMove, .black)
+        XCTAssertEqual(harness.stockfish.requests.count, requestCount)
+        XCTAssertEqual(harness.stockfish.cancelAnalysisCount, cancelCount)
+        XCTAssertEqual(request.fen, model.livePositionFEN)
+        XCTAssertNotEqual(request.fen, model.positionFEN)
+
+        // A legal move on the historical board cannot become a live move.
+        model.handleUserMove(move: try Move(string: "d2d4"), isLegal: true)
+        XCTAssertEqual(model.liveMoveCount, 1)
+        harness.stockfish.emitInfo(score: .centipawns(35))
+        harness.stockfish.emitBestMove("e7e5")
+        XCTAssertEqual(model.moveRecords.map(\.san), ["e4", "e5"])
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertEqual(model.moveAnnouncement?.message, "Live game: Black moved e5.")
+        XCTAssertEqual(model.positionFEN, FENSerializer().fen(from: .standard))
+        XCTAssertEqual(model.displayedEvaluation, .unavailable)
+        XCTAssertEqual(model.boardModel.game.moveHistory.count, 0)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().fen, model.livePositionFEN)
+
+        let searchesBeforeReturn = harness.stockfish.requests.count
+        model.returnToLive()
+        XCTAssertFalse(model.isBrowsingHistory)
+        XCTAssertEqual(model.selectedMovePly, 2)
+        XCTAssertEqual(model.positionFEN, model.livePositionFEN)
+        XCTAssertEqual(model.boardModel.game.moveHistory.count, 2)
+        XCTAssertEqual(model.boardModel.interactionMode, .legalMovesOnly)
+        XCTAssertEqual(harness.stockfish.requests.count, searchesBeforeReturn)
+        model.handleUserMove(move: try Move(string: "g1f3"), isLegal: true)
+        XCTAssertEqual(model.moveRecords.map(\.san), ["e4", "e5", "Nf3"])
+        XCTAssertEqual(model.selectedMovePly, 3)
+    }
+
+    func testDelayedOpponentApplicationSurvivesHistoryBrowsing() async throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(minimumEngineThinkingSeconds: 0.08)
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        harness.stockfish.emitBestMove("e7e5")
+        model.selectPosition(atPly: 0)
+        await waitUntil { model.liveMoveCount == 2 }
+        XCTAssertEqual(model.liveMoveCount, 2)
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertEqual(model.boardModel.game.moveHistory, [])
+    }
+
+    func testEngineDemoContinuesAndPausesAgainstLiveStateWhileBrowsing() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(gameMode: .engineVsEngine, engineDemoConfiguration: Self.fastDemo)
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.stepEngineDemo()
+        harness.stockfish.emitBestMove("e2e4")
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+        let countBeforeNavigation = harness.stockfish.requests.count
+        model.selectPosition(atPly: 1)
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(harness.stockfish.requests.count, countBeforeNavigation)
+
+        model.playEngineDemo()
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .black)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().fen, model.livePositionFEN)
+        harness.stockfish.emitBestMove("e7e5")
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertEqual(model.liveMoveCount, 2)
+        XCTAssertEqual(model.engineDemoRunState, .playing)
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .white)
+        model.pauseEngineDemo()
+        XCTAssertEqual(model.engineDemoRunState, .pausingAfterCurrentMove)
+        harness.stockfish.emitBestMove("g1f3")
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertTrue(model.canStepEngineDemo)
+        model.stepEngineDemo()
+        XCTAssertEqual(harness.stockfish.requireLastRequest().sideToMove, .black)
+        harness.stockfish.emitBestMove("b8c6")
+        XCTAssertEqual(model.liveMoveCount, 4)
+        XCTAssertEqual(model.selectedMovePly, 0)
+        model.returnToLive()
+        XCTAssertEqual(model.boardModel.game.moveHistory.count, 4)
+        XCTAssertEqual(model.boardModel.interactionMode, .readOnly)
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+    }
+
+    func testCompletionResetAndSamePositionStaleRepliesRetainExactRequestIdentity() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(gameMode: .engineVsEngine, engineDemoConfiguration: Self.fastDemo)
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.playEngineDemo()
+        let oldRootRequest = harness.stockfish.requireLastRequest()
+        harness.stockfish.emitInfo(score: .centipawns(35))
+        harness.stockfish.emitBestMove("f2f3")
+        model.selectPosition(atPly: 0)
+        for move in ["e7e5", "g2g4", "d8h4"] { harness.stockfish.emitBestMove(move) }
+        XCTAssertEqual(model.gameStatus, .checkmate(winner: .black))
+        XCTAssertEqual(model.displayedGameStatus, .ongoing(drawClaims: []))
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(35))
+        XCTAssertTrue(model.canRestartEngineDemo)
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+        model.returnToLive()
+        XCTAssertEqual(model.displayedGameStatus, .checkmate(winner: .black))
+        model.selectPosition(atPly: 1)
+        model.restartEngineDemoAndPlay()
+        let newRootRequest = harness.stockfish.requireLastRequest()
+        XCTAssertEqual(oldRootRequest.fen, newRootRequest.fen)
+        XCTAssertNotEqual(oldRootRequest.id, newRootRequest.id)
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertFalse(model.isBrowsingHistory)
+        XCTAssertEqual(model.liveMoveCount, 0)
+        harness.stockfish.emitInfo(score: .centipawns(999), request: oldRootRequest)
+        harness.stockfish.emitBestMove("d2d4", request: oldRootRequest)
+        XCTAssertEqual(model.liveMoveCount, 0)
+        XCTAssertEqual(model.evaluation, .unavailable)
+        harness.stockfish.emitBestMove("e2e4")
+        XCTAssertEqual(model.moveRecords.map(\.san), ["e4"])
+        XCTAssertEqual(model.selectedMovePly, 1)
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.displayedEvaluation, .unavailable)
+        XCTAssertNil(model.displayedRecordedEvaluation)
+    }
+
+    func testClaimedDrawRemainsLiveOnlyAndCannotBeClaimedFromHistory() throws {
+        let moves = ["g1f3", "g8f6", "f3g1", "f6g8", "g1f3", "g8f6", "f3g1", "f6g8"]
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(initialTimeline: try Self.timeline(moves))
+        defer { model.cleanup() }
+        model.selectPosition(atPly: 0)
+        model.claimDraw(.threefoldRepetition)
+        XCTAssertTrue(model.isGameOngoing)
+        XCTAssertNil(model.activeAlert)
+        model.returnToLive()
+        model.claimDraw(.threefoldRepetition)
+        XCTAssertEqual(model.gameStatus, .draw(.threefoldRepetition))
+        XCTAssertEqual(model.displayedGameStatus, .draw(.threefoldRepetition))
+        model.selectPosition(atPly: 4)
+        XCTAssertEqual(model.displayedGameStatus, .ongoing(drawClaims: []))
+        XCTAssertEqual(model.gameStatus, .draw(.threefoldRepetition))
+        XCTAssertFalse(model.isGameOngoing)
+        model.returnToLive()
+        XCTAssertEqual(model.boardModel.game.status, .draw(.threefoldRepetition))
+        XCTAssertEqual(model.boardModel.interactionMode, .readOnly)
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        XCTAssertEqual(model.liveMoveCount, 8)
+    }
+
+    func testLiveAnalysisIsHiddenOnHistoryAndRestoredWithoutRestartingSearch() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(initialTimeline: try Self.timeline(["e2e4", "e7e5"]))
+        defer { model.cleanup() }
+        model.setSuggestionArrowCount(1)
+        harness.stockfish.emitInfo(score: .centipawns(45), move: "g1f3")
+        XCTAssertEqual(model.boardModel.arrows.count, 1)
+        let requestCount = harness.stockfish.requests.count
+        let cancellationCount = harness.stockfish.cancelAnalysisCount
+        model.selectPosition(atPly: 1)
+        XCTAssertTrue(model.boardModel.arrows.isEmpty)
+        XCTAssertEqual(model.displayedEvaluation, .unavailable)
+        harness.stockfish.emitInfo(score: .centipawns(60), move: "b1c3")
+        XCTAssertTrue(model.boardModel.arrows.isEmpty)
+        XCTAssertEqual(model.evaluation, .centipawns(60))
+        model.returnToLive()
+        XCTAssertEqual(model.boardModel.arrows.first?.from, BoardSquare(row: 0, column: 1))
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(60))
+        XCTAssertEqual(harness.stockfish.requests.count, requestCount)
+        XCTAssertEqual(harness.stockfish.cancelAnalysisCount, cancellationCount)
+    }
+
+    func testSettingsDuringHistoryUseLivePositionAndPreserveDisplayPreferences() throws {
+        for mode in [DemoGameMode.humanVsEngine, .engineVsEngine] {
+            let harness = EngineAnalysisHarness()
+            let model = harness.makeViewModel(gameMode: mode, initialTimeline: try Self.timeline(["e2e4", "e7e5"]))
+            defer { model.cleanup() }
+            model.pieceSet = .sashiteMerida
+            model.setPieceRenderingScale(0.76)
+            model.boardTheme = .artDecoMonochrome
+            model.boardModel.perspective = .black
+            model.setCoordinateLabelMode(.outside)
+            model.selectPosition(atPly: 1)
+            model.setEngineMoveTime(.halfSecond)
+            if mode == .humanVsEngine {
+                model.setSelectedEngineKind(.arasan)
+                XCTAssertEqual(harness.arasan.requireLastRequest().fen, model.livePositionFEN)
+                XCTAssertEqual(harness.arasan.requireLastRequest().sideToMove, .white)
+            } else {
+                XCTAssertEqual(model.engineDemoConfiguration.white.moveTime, .halfSecond)
+            }
+            model.returnToLive()
+            XCTAssertEqual(model.boardModel.pieceSet, .sashiteMerida)
+            XCTAssertEqual(model.pieceRenderingScale, 0.76)
+            XCTAssertEqual(model.boardModel.boardTheme, .artDecoMonochrome)
+            XCTAssertEqual(model.boardModel.perspective, .black)
+            XCTAssertEqual(model.boardModel.coordinateLabelPlacement, .outside)
+            XCTAssertEqual(model.liveMoveCount, 2)
+        }
+    }
+
+    func testInvalidSelectionsAndMutatingDisplayedCopyCannotChangeLiveAuthority() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        let liveFEN = model.livePositionFEN
+        model.selectPosition(atPly: -1)
+        model.selectPosition(atPly: 2)
+        XCTAssertEqual(model.selectedMovePly, 1)
+        // ChessBoardModel exposes a mutable Game for rendering, not authority.
+        model.boardModel.game = Game(position: .standard)
+        XCTAssertEqual(model.livePositionFEN, liveFEN)
+        harness.stockfish.emitBestMove("e7e5")
+        XCTAssertEqual(model.moveRecords.map(\.san), ["e4", "e5"])
+        XCTAssertEqual(model.positionFEN, model.livePositionFEN)
+    }
+
+    func testBlackToMoveRootPromotionAndHistoricalHighlightUseTimelinePly() throws {
+        let root = try FENSerializer().position(from: "7k/8/8/8/8/8/p7/7K b - - 0 42")
+        let timeline = try GameTimeline(initialPosition: root, moves: [Move(string: "a2a1q")])
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(initialTimeline: timeline)
+        defer { model.cleanup() }
+        XCTAssertEqual(model.moveRecords.first?.fullMoveNumber, 42)
+        XCTAssertEqual(model.moveRecords.first?.side, .black)
+        XCTAssertEqual(model.moveRecords.first?.san, "a1=Q+")
+        model.selectPosition(atPly: 0)
+        XCTAssertEqual(model.positionFEN, FENSerializer().fen(from: root))
+        XCTAssertEqual(model.displayedSideToMove, .black)
+        XCTAssertEqual(model.boardModel.game.moveHistory, [])
+        model.returnToLive()
+        XCTAssertEqual(model.selectedMovePly, 1)
+        XCTAssertEqual(model.boardModel.game.moveHistory, timeline.moves)
+        XCTAssertEqual(model.displayedSideToMove, .white)
+    }
+
+    func testAutomaticScenarioReplayContinuesWhileHistoricalBoardStaysPut() async throws {
+        let scenario = try GameScenarioLoader.loadScenario(id: "fools-mate", bundle: .main)
+        let model = GameViewModel(
+            playerColor: .white, pieceSet: .artDecoMonochrome, boardTheme: .classicGreen,
+            scenario: scenario, scenarioReplayDelaySeconds: 0.05
+        )
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        await waitUntil { model.liveMoveCount == 1 }
+        XCTAssertEqual(model.liveMoveCount, 1)
+        model.selectPosition(atPly: 0)
+        await waitUntil { model.liveMoveCount == 4 }
+        XCTAssertEqual(model.liveMoveCount, 4)
+        XCTAssertEqual(model.selectedMovePly, 0)
+        XCTAssertEqual(model.displayedGameStatus, .ongoing(drawClaims: []))
+        XCTAssertEqual(model.gameStatus, .checkmate(winner: .black))
+        model.returnToLive()
+        XCTAssertEqual(model.displayedGameStatus, .checkmate(winner: .black))
+    }
+
+    private static var fastDemo: EngineDemoConfiguration {
+        EngineDemoConfiguration(
+            white: EngineDemoSideConfiguration(engineKind: .stockfish, moveTime: .quarterSecond),
+            black: EngineDemoSideConfiguration(engineKind: .stockfish, moveTime: .quarterSecond),
+            pacing: .fast
+        )
+    }
+
+    private static func timeline(_ moves: [String]) throws -> GameTimeline {
+        try GameTimeline(moves: moves.map(Move.init(string:)))
+    }
+
+    private func waitUntil(_ predicate: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(2)
+        while !predicate(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
         }
     }
 }
@@ -1944,7 +2355,8 @@ private final class EngineAnalysisHarness {
         playerColor: PieceColor = .white,
         gameMode: DemoGameMode = .humanVsEngine,
         engineDemoConfiguration: EngineDemoConfiguration? = nil,
-        minimumEngineThinkingSeconds: TimeInterval = 0
+        minimumEngineThinkingSeconds: TimeInterval = 0,
+        initialTimeline: GameTimeline? = nil
     ) -> GameViewModel {
         GameViewModel(
             playerColor: playerColor,
@@ -1960,7 +2372,8 @@ private final class EngineAnalysisHarness {
             arasanProviderFactory: { [arasan] eventHandler in
                 arasan.eventHandler = eventHandler
                 return arasan
-            }
+            },
+            initialTimeline: initialTimeline
         )
     }
 
@@ -2033,20 +2446,26 @@ private final class RecordingEngineProvider: DemoEngineProvider {
         stop()
     }
 
-    func emitInfo(score: UCIScore, move: String? = nil, multipv: Int? = nil) {
+    func emitInfo(
+        score: UCIScore, move: String? = nil, multipv: Int? = nil,
+        depth: Int? = nil, scoreBound: UCIScoreBound = .exact
+    ) {
         guard let activeRequest else {
             XCTFail("Expected an active request for \(engineKind.displayName)")
             return
         }
 
-        emitInfo(score: score, move: move, multipv: multipv, request: activeRequest)
+        emitInfo(score: score, move: move, multipv: multipv, request: activeRequest,
+                 depth: depth, scoreBound: scoreBound)
     }
 
     func emitInfo(
         score: UCIScore,
         move: String? = nil,
         multipv: Int? = nil,
-        request: EngineSearchRequest
+        request: EngineSearchRequest,
+        depth: Int? = nil,
+        scoreBound: UCIScoreBound = .exact
     ) {
         guard request.engineKind == engineKind else {
             XCTFail("Expected \(engineKind.displayName) request, got \(request.engineKind.displayName)")
@@ -2056,8 +2475,10 @@ private final class RecordingEngineProvider: DemoEngineProvider {
         let principalVariation = move.map { [try! Move(string: $0)] } ?? []
         let info = UCIInfoLine(
             rawLine: "info",
+            depth: depth,
             multipv: multipv,
             score: score,
+            scoreBound: scoreBound,
             principalVariation: principalVariation
         )
         eventHandler?(.output(.info(info), request: request))
@@ -2070,10 +2491,14 @@ private final class RecordingEngineProvider: DemoEngineProvider {
         }
 
         self.activeRequest = nil
+        emitBestMove(move, request: activeRequest)
+    }
+
+    func emitBestMove(_ move: String, request: EngineSearchRequest) {
         eventHandler?(
             .output(
                 .bestMove(UCIBestMove(rawLine: "bestmove \(move)", move: try! Move(string: move))),
-                request: activeRequest
+                request: request
             )
         )
     }

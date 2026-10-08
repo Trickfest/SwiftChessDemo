@@ -737,6 +737,228 @@ final class SwiftChessDemoUITests: XCTestCase {
         XCTAssertTrue(finalMove.label.contains("Black Nbd7"))
     }
 
+    func testHumanHistoryStaysReadOnlyWhenPendingReplyArrivesAndReturnsToLive() throws {
+        let app = moveSmokeTestApplication(id: "suggestion-line")
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "8"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION_BEFORE_REPLY"] = "cp:85"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_SUGGESTION_ARROW_COUNT"] = "2"
+        app.launch()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        let initialFEN = try displayedFEN(in: app)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.previous"].isEnabled)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.end"].isEnabled)
+        try tapMove("e2e4", in: app)
+        try waitForHistory(selected: 1, live: 1, browsing: false, in: app)
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.start"], in: app).tap()
+        try waitForHistory(selected: 0, live: 1, browsing: true, in: app)
+        try requireElement(app.descendants(matching: .any)["Game.historyBanner"].firstMatch, named: "read-only history banner")
+        let historicalEvaluation = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "starting position recorded evaluation"
+        )
+        XCTAssertEqual(historicalEvaluation.value as? String, "Evaluation unavailable")
+        XCTAssertEqual(app.staticTexts["Game.recordedEvaluation"].label, "Not evaluated")
+
+        // The delayed scenario reply must extend LIVE history, not move the board.
+        try waitForHistory(selected: 0, live: 2, browsing: true, in: app, timeout: 15)
+        XCTAssertEqual(try displayedFEN(in: app), initialFEN)
+        try waitForGameBoardState(containing: "Suggestion arrows: None", in: app, named: "history arrows hidden")
+        XCTAssertFalse(app.buttons["UITest.move.g1f3"].exists)
+
+        let historicalSquares = try revealReadOnlySquares(["e2", "e4"], in: app)
+        attachScreenshot(from: app, named: "History - visible read-only squares before move attempt")
+        for square in historicalSquares {
+            square.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        XCTAssertEqual(try displayedFEN(in: app), initialFEN)
+        try waitForHistory(selected: 0, live: 2, browsing: true, in: app)
+
+        try revealHistoryElement(app.buttons["Game.returnToLive"], in: app).tap()
+        try waitForHistory(selected: 2, live: 2, browsing: false, in: app)
+        XCTAssertFalse(app.descendants(matching: .any)["Game.historyBanner"].firstMatch.exists)
+        try requireElement(app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch, named: "restored live evaluation")
+        try waitForGameBoardState(
+            containing: "Suggestion arrows: Best suggestion g1 to f3",
+            in: app, named: "restored live suggestions"
+        )
+        try revealHistoryElement(app.buttons["UITest.move.g1f3"], in: app).tap()
+        try waitForHistory(selected: 3, live: 3, browsing: false, in: app)
+        attachScreenshot(from: app, named: "History - human return to live")
+    }
+
+    func testHistoryDirectSelectionScrollsAndPreservesDisplayPreferences() throws {
+        let app = scenarioTestApplication(id: "ruy-lopez-long")
+        app.launch()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try waitForHistory(selected: 20, live: 20, browsing: false, in: app, timeout: 15)
+
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.start"], in: app).tap()
+        try waitForHistory(selected: 0, live: 20, browsing: true, in: app)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.previous"].isEnabled)
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.next"], in: app).tap()
+        try waitForHistory(selected: 1, live: 20, browsing: true, in: app)
+        let firstMove = app.descendants(matching: .any)["ChessUI.moveList.move.1"].firstMatch
+        try revealHistoryElement(firstMove, in: app)
+        XCTAssertTrue(firstMove.isSelected)
+        XCTAssertTrue(firstMove.isHittable)
+
+        let secondMove = app.descendants(matching: .any)["ChessUI.moveList.move.2"].firstMatch
+        try revealHistoryElement(secondMove, in: app).tap()
+        try waitForHistory(selected: 2, live: 20, browsing: true, in: app)
+        XCTAssertTrue(secondMove.isSelected)
+        let historicalFEN = try displayedFEN(in: app)
+
+        let coordinatePicker = app.descendants(matching: .any)["Game.coordinateLabelModePicker"].firstMatch
+        try revealHistoryElement(coordinatePicker, in: app)
+        try select("Outside", from: coordinatePicker, in: app)
+        let slider = app.sliders["Game.pieceSizeSlider"]
+        try revealHistoryElement(slider, in: app)
+        slider.adjust(toNormalizedSliderPosition: 0)
+        try waitForGameBoardState(containing: "Piece size: 50%", in: app, named: "historical piece size preference")
+        try waitForGameBoardState(containing: "Coordinates: Outside", in: app, named: "historical coordinate preference")
+        XCTAssertEqual(try displayedFEN(in: app), historicalFEN)
+
+        // Scenario replay has no engine scores; keep the bar explicitly unavailable.
+        let evaluationToggle = app.descendants(matching: .any)["Game.evaluationToggle"].firstMatch
+        try revealHistoryElement(evaluationToggle, in: app)
+        XCTAssertEqual(evaluationToggle.value as? String, "Shown")
+        let historicalEvaluation = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "unscored scenario history evaluation"
+        )
+        XCTAssertEqual(historicalEvaluation.value as? String, "Evaluation unavailable")
+        XCTAssertEqual(app.staticTexts["Game.recordedEvaluation"].label, "Not evaluated")
+
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.end"], in: app).tap()
+        try waitForHistory(selected: 20, live: 20, browsing: false, in: app)
+        let lastMove = app.descendants(matching: .any)["ChessUI.moveList.move.20"].firstMatch
+        try revealHistoryElement(lastMove, in: app)
+        XCTAssertTrue(lastMove.isSelected)
+        XCTAssertTrue(lastMove.isHittable)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.next"].isEnabled)
+        try waitForGameBoardState(containing: "Coordinates: Outside", in: app, named: "coordinates retained after return")
+        try waitForGameBoardState(containing: "Piece size: 50%", in: app, named: "piece size retained after return")
+        try requireElement(app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch, named: "live evaluation restored")
+        attachScreenshot(from: app, named: "History - selected long line and preferences")
+    }
+
+    func testEngineDemoHistoryKeepsLivePlaybackIndependentAndNewGameClearsHistory() throws {
+        let app = testApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "0"
+        app.launch()
+        try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+
+        // Exercise real wrappers but assert legal history growth, not engine-specific moves.
+        let step = app.buttons["Game.engineDemoStepButton"]
+        for ply in 1...2 {
+            try revealHistoryElement(step, in: app).tap()
+            try waitForHistory(selected: ply, live: ply, browsing: false, in: app, timeout: 20)
+            try waitForGameBoardState(containing: "Demo state: Play,", in: app, named: "paused after step")
+        }
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.previous"], in: app).tap()
+        try waitForHistory(selected: 1, live: 2, browsing: true, in: app)
+        let historicalFEN = try displayedFEN(in: app)
+        try revealHistoryElement(step, in: app).tap()
+        try waitForHistory(selected: 1, live: 3, browsing: true, in: app, timeout: 20)
+        XCTAssertEqual(try displayedFEN(in: app), historicalFEN)
+        try waitForGameBoardState(containing: "Demo state: Play,", in: app, named: "paused history after step")
+
+        let playback = app.buttons["Game.engineDemoPlayPauseButton"]
+        try revealHistoryElement(playback, in: app).tap()
+        try waitForLivePly(atLeast: 4, in: app)
+        try revealHistoryElement(playback, in: app).tap()
+        try waitForGameBoardState(containing: "Demo state: Play,", in: app, named: "explicit pause while browsing", timeout: 20)
+        let pausedPly = try livePly(in: app)
+        try waitForHistory(selected: 1, live: pausedPly, browsing: true, in: app)
+        XCTAssertEqual(try displayedFEN(in: app), historicalFEN)
+        let recordedEvaluation = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "recorded engine demo evaluation"
+        )
+        try waitForEvaluationValueIsAvailable(recordedEvaluation, named: "recorded engine demo score")
+        XCTAssertTrue(app.staticTexts["Game.recordedEvaluation"].label.hasPrefix("Recorded evaluation · "))
+
+        try revealHistoryElement(app.buttons["Game.returnToLive"], in: app).tap()
+        try waitForHistory(selected: pausedPly, live: pausedPly, browsing: false, in: app)
+        try waitForGameBoardState(containing: "Demo state: Play,", in: app, named: "return does not resume playback")
+        attachScreenshot(from: app, named: "History - engine demo paused at live")
+
+        try requireElement(app.buttons["Back"].firstMatch, named: "engine demo back").tap()
+        try requireElement(app.buttons["Start Game"], named: "new engine demo").tap()
+        try waitForHistory(selected: 0, live: 0, browsing: false, in: app)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.start"].isEnabled)
+        XCTAssertFalse(app.buttons["ChessUI.moveNavigation.end"].isEnabled)
+    }
+
+    func testCompletedGameHistorySeparatesDisplayedPositionFromLiveResult() throws {
+        let app = scenarioTestApplication(id: "fools-mate")
+        app.launch()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        let result = try requireElement(app.alerts["Checkmate"].firstMatch, named: "completed live game")
+        result.buttons["OK"].tap()
+        try waitForHistory(selected: 4, live: 4, browsing: false, in: app)
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.start"], in: app).tap()
+        try waitForHistory(selected: 0, live: 4, browsing: true, in: app)
+        let historicalStatus = try requireElement(
+            app.descendants(matching: .any)["Game.historicalStatus"].firstMatch,
+            named: "displayed starting position status"
+        )
+        XCTAssertEqual(historicalStatus.value as? String, "White to move")
+        let liveStatus = try requireElement(
+            app.descendants(matching: .any)["Game.liveStatus"].firstMatch,
+            named: "separate live result"
+        )
+        XCTAssertEqual(liveStatus.value as? String, "Black wins by checkmate")
+        XCTAssertFalse(app.buttons["Game.resignButton"].exists)
+        try revealHistoryElement(app.buttons["Game.returnToLive"], in: app).tap()
+        try waitForHistory(selected: 4, live: 4, browsing: false, in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["ChessUI.moveList.move.4"].firstMatch.isSelected)
+        attachScreenshot(from: app, named: "History - completed game return to live")
+    }
+
+    func testRecordedHistoryEvaluationShowsMatchingScoreUnavailableStateAndToggle() throws {
+        let app = moveSmokeTestApplication(id: "suggestion-line")
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY"] = "0"
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_EVALUATION_BEFORE_REPLY"] = "cp:85"
+        app.launch()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try tapMove("e2e4", in: app)
+        try waitForHistory(selected: 2, live: 2, browsing: false, in: app)
+
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.previous"], in: app).tap()
+        try waitForHistory(selected: 1, live: 2, browsing: true, in: app)
+        let evaluation = try requireElement(
+            app.descendants(matching: .any)["ChessUI.evaluationBar"].firstMatch,
+            named: "recorded position score"
+        )
+        XCTAssertEqual(evaluation.value as? String, "White advantage 0.9 pawns")
+        XCTAssertEqual(evaluation.label, "Recorded evaluation")
+        XCTAssertEqual(app.staticTexts["Game.recordedEvaluation"].label, "Recorded evaluation · Stockfish")
+        attachScreenshot(from: app, named: "History - recorded evaluation matches selected position")
+
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.start"], in: app).tap()
+        try waitForHistory(selected: 0, live: 2, browsing: true, in: app)
+        XCTAssertEqual(evaluation.value as? String, "Evaluation unavailable")
+        XCTAssertEqual(app.staticTexts["Game.recordedEvaluation"].label, "Not evaluated")
+        let toggle = app.buttons["Game.evaluationToggle"]
+        try revealHistoryElement(toggle, in: app).tap()
+        XCTAssertFalse(evaluation.exists)
+        XCTAssertFalse(app.staticTexts["Game.recordedEvaluation"].exists)
+        try revealHistoryElement(toggle, in: app).tap()
+        try revealHistoryElement(app.buttons["ChessUI.moveNavigation.next"], in: app).tap()
+        try waitForHistory(selected: 1, live: 2, browsing: true, in: app)
+        XCTAssertEqual(evaluation.value as? String, "White advantage 0.9 pawns")
+
+        try revealHistoryElement(app.buttons["Game.returnToLive"], in: app).tap()
+        try waitForHistory(selected: 2, live: 2, browsing: false, in: app)
+        XCTAssertEqual(evaluation.label, "Evaluation")
+        XCTAssertEqual(evaluation.value as? String, "White advantage 0.9 pawns")
+        XCTAssertFalse(app.staticTexts["Game.recordedEvaluation"].exists)
+    }
+
     func testGameScenarioReplayHandlesPromotion() throws {
         let app = scenarioTestApplication(id: "promotion-to-queen")
         app.launch()
@@ -931,6 +1153,133 @@ final class SwiftChessDemoUITests: XCTestCase {
         for scenarioID in expectedScenarioIDs {
             XCTAssertTrue(detail.label.contains(scenarioID), "Missing indexed scenario id \(scenarioID)")
         }
+    }
+
+    /// Inactive board squares remain accessible spatial items but need not be
+    /// reported as hittable. Verify their actual visible geometry before testing
+    /// physical taps; neither missing nor off-screen squares satisfy this check.
+    private func revealReadOnlySquares(
+        _ coordinates: [String],
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> [XCUIElement] {
+        let squares = coordinates.map {
+            app.descendants(matching: .any)["ChessUI.square.\($0)"].firstMatch
+        }
+        let scroll = app.scrollViews["Game.scrollView"].firstMatch
+        let window = app.windows.firstMatch
+        let deadline = Date().addingTimeInterval(8)
+        repeat {
+            var viewport = scroll.frame.intersection(window.frame)
+            let navigationBar = app.navigationBars.firstMatch
+            if navigationBar.exists, navigationBar.frame.intersects(viewport) {
+                let visibleTop = max(viewport.minY, navigationBar.frame.maxY)
+                viewport = CGRect(x: viewport.minX, y: visibleTop,
+                                  width: viewport.width, height: max(0, viewport.maxY - visibleTop))
+            }
+            if squares.allSatisfy(\.exists) {
+                let frames = squares.map(\.frame)
+                if !viewport.isEmpty, !viewport.isNull,
+                   frames.allSatisfy({ !$0.isEmpty && !$0.isNull && viewport.contains($0) }) {
+                    return squares
+                }
+            }
+            let visibleFrames = squares.filter(\.exists).map(\.frame).filter { !$0.isEmpty && !$0.isNull }
+            let towardTop = visibleFrames.contains { $0.minY < viewport.minY }
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: towardTop ? 0.25 : 0.82))
+            let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: towardTop ? 0.82 : 0.25))
+            start.press(forDuration: 0.01, thenDragTo: end)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        } while Date() < deadline
+
+        attachScreenshot(from: app, named: "History - square visibility failure")
+        let message = "Read-only squares \(coordinates.joined(separator: ", ")) are not fully inside the visible game viewport"
+        XCTFail(message, file: file, line: line)
+        throw UITestFailure(description: message)
+    }
+
+    /// History controls and preferences are on opposite sides of the compact
+    /// board. Reveal in either direction without scrolling the inner move list.
+    @discardableResult
+    private func revealHistoryElement(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws -> XCUIElement {
+        let scroll = app.scrollViews["Game.scrollView"].firstMatch
+        let deadline = Date().addingTimeInterval(8)
+        repeat {
+            if element.exists, element.isHittable { return element }
+            let towardTop = element.exists && element.frame.midY < scroll.frame.midY
+            // Start inside noninteractive content: board squares own drag
+            // gestures, and the transparent outer gutter is not a reliable
+            // scroll hit target. Never drag the horizontal move list itself.
+            let viewport = scroll.frame.intersection(app.windows.firstMatch.frame)
+            let anchors = [app.staticTexts["Preferences"], app.staticTexts["Game.historyPosition"]]
+            let anchor = anchors.first { candidate in
+                guard candidate.exists, candidate.isHittable,
+                      viewport.contains(candidate.frame) else { return false }
+                let distance = towardTop
+                    ? viewport.maxY - 60 - candidate.frame.midY
+                    : candidate.frame.midY - max(viewport.minY + 60, app.navigationBars.firstMatch.frame.maxY + 20)
+                return distance > 100
+            }
+            if let anchor {
+                let start = anchor.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                let endY = towardTop ? viewport.maxY - 60
+                    : max(viewport.minY + 60, app.navigationBars.firstMatch.frame.maxY + 20)
+                let end = start.withOffset(CGVector(dx: 0, dy: endY - anchor.frame.midY))
+                start.press(forDuration: 0.01, thenDragTo: end)
+            } else {
+                // Lower preferences can require an initial upward reveal before
+                // either text anchor is visible (for example on compact phones).
+                let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.3 : 0.82))
+                let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: towardTop ? 0.82 : 0.3))
+                start.press(forDuration: 0.01, thenDragTo: end)
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
+        } while Date() < deadline
+        attachScreenshot(from: app, named: "History - requested element visibility failure")
+        XCTAssertTrue(element.exists && element.isHittable, "Could not reveal the requested history element", file: file, line: line)
+        return element
+    }
+
+    private func waitForHistory(
+        selected: Int, live: Int, browsing: Bool, in app: XCUIApplication,
+        timeout: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        try waitForGameBoardState(
+            containing: "History: \(browsing ? "Browsing" : "Live"), Selected ply: \(selected), Live ply: \(live),",
+            in: app, named: "selected/live history state", timeout: timeout, file: file, line: line
+        )
+    }
+
+    private func displayedFEN(in app: XCUIApplication) throws -> String {
+        let state = try gameBoardStateValue(in: app)
+        guard let range = state.range(of: "FEN: ", options: .backwards) else {
+            throw UITestFailure(description: "Missing displayed FEN: \(state)")
+        }
+        return String(state[range.upperBound...])
+    }
+
+    private func livePly(in app: XCUIApplication) throws -> Int {
+        let state = try gameBoardStateValue(in: app)
+        guard let range = state.range(of: "Live ply: "),
+              let value = Int(state[range.upperBound...].prefix(while: { $0.isNumber })) else {
+            throw UITestFailure(description: "Missing live ply: \(state)")
+        }
+        return value
+    }
+
+    private func waitForLivePly(atLeast minimum: Int, in app: XCUIApplication) throws {
+        let deadline = Date().addingTimeInterval(20)
+        repeat {
+            if try livePly(in: app) >= minimum { return }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+        XCTFail("Live engine demo did not reach ply \(minimum)")
     }
 
     @discardableResult

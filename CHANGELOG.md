@@ -5,7 +5,41 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
-## Unreleased
+## Game History Navigation
+
+### Added
+
+- Shared start/previous/next/end navigation, direct move selection, selected
+  scrolling, and Return to Live in both human-vs-engine and engine-vs-engine
+  gameplay. Historical positions are read-only and keep their selected ply
+  while new live moves arrive.
+- Separate historical position status from live engine activity. Hide live
+  suggestions on history, while preserving display preferences
+  and existing pause/resume, completed-game, and Play Again behavior.
+- Record primary exact engine evaluations by searched position and display
+  matching scores while browsing, with engine/depth attribution and explicit
+  Not evaluated states. Both gameplay modes retain scores for the current game;
+  Play Again clears them, and navigation does not start historical analysis.
+- Deterministic coverage for browsing during engine replies, returning to live,
+  reset and stale-reply protection, and both gameplay modes.
+
+### Changed
+
+- Consolidated documentation, retaining future demo ideas in the README rather
+  than a separate workspace maintenance plan. History navigation received owner
+  acceptance on Mac, physical iPhone/iPad, accessibility/layout, and docs.
+
+- Use an authoritative live game independently of the displayed board, with
+  the SwiftChessTools timeline/navigation APIs. Sibling source dependencies
+  are retained.
+
+### Fixed
+
+- Keep long-game move numbers and their periods on one line through the shared
+  SwiftChessTools move-list layout fix.
+- Identify engine searches independently of their FEN/settings, preventing a
+  delayed reply from an earlier search being accepted after an identical-position
+  restart.
 
 ## 1.5.0 - 2026-10-03
 
