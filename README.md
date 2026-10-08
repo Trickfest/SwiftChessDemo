@@ -39,6 +39,24 @@ uses Swift 6 language mode and targets iOS 26. The current Arasan source
 snapshot intentionally supports arm64 only, so an
 x86_64 simulator build is not a supported configuration.
 
+### Release dependency baseline
+
+SwiftChessDemo 1.6.0 uses these coordinated source versions:
+
+| Dependency | Version | Resolution |
+| --- | --- | --- |
+| SwiftChessTools | 1.4.0 | Local sibling checkout; required for timeline/navigation APIs |
+| StockfishEmbedded | 1.12.1 | Local sibling checkout and its verified NNUE asset |
+| ArasanEmbedded | 1.3.0 | Existing remote revision recorded in Package.resolved |
+
+The Arasan package requirement remains 1.3.0 or later within major version 1;
+the committed lockfile selects 1.3.0. This release does not upgrade that pin.
+Local path dependencies are not version-pinned by SwiftPM, so use the matching
+sibling source versions. Final release-candidate validation is performed
+separately before tagging.
+
+### Checkout layout
+
 Public checkout layout:
 
 SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling
@@ -108,15 +126,15 @@ Human vs Engine and Engine vs Engine modes. It adjusts the selected piece set
 immediately, including moving pieces and promotion choices. **Default** restores
 that set's bundled size. Each set remembers its value during the current game;
 a new game starts with package defaults. This demonstrates SwiftChessTools'
-`ChessBoardModel.pieceRenderingScaleOverrides` API. SwiftChessDemo 1.5.0
-requires the sibling SwiftChessTools checkout at 1.3.0 or later.
+`ChessBoardModel.pieceRenderingScaleOverrides` API. SwiftChessDemo 1.6.0
+requires the sibling SwiftChessTools checkout at 1.4.0 or later.
 
 ### Game history navigation
 
 The demo uses the sibling SwiftChessTools APIs
 `GameTimeline`, `ChessMoveNavigationView`, selected-move scrolling, and
 `ChessBoardModel.setGame(_:)`. Use matching source checkouts that include these
-APIs; SwiftChessTools 1.3.0 and earlier do not provide them.
+APIs from SwiftChessTools 1.4.0 or later.
 
 In both **Human vs Engine** and **Engine vs Engine**, use the four navigation
 buttons to go to the initial position, previous move, next move, or current

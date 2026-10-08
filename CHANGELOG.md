@@ -5,7 +5,7 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
-## Game History Navigation
+## 1.6.0 - 2026-10-08
 
 ### Added
 
@@ -25,6 +25,11 @@ for a release. Tagged releases use dated version headings.
 
 ### Changed
 
+- Prepared marketing version 1.6.0 (build 1) and aligned the release-validation
+  version assertion. The coordinated source dependency baseline is
+  SwiftChessTools 1.4.0, StockfishEmbedded 1.12.1, and ArasanEmbedded 1.3.0 from
+  the existing Package.resolved. Sibling path dependencies and the Arasan pin
+  are unchanged; final candidate validation is a separate release gate.
 - Consolidated documentation, retaining future demo ideas in the README rather
   than a separate workspace maintenance plan. History navigation received owner
   acceptance on Mac, physical iPhone/iPad, accessibility/layout, and docs.
