@@ -48,6 +48,11 @@ settings in `project.pbxproj`; editing the Team or Bundle Identifier fields in
 Xcode's Signing & Capabilities pane may create such an override. Simulator and
 unsigned generic-device builds do not require the local signing file.
 
+Arasan resolves from its published GitHub release. If an unpublished engine
+update requires a temporary local override, restore the remote requirement and
+resolve the published release before publication. The sibling
+Stockfish/SwiftChessTools paths remain permanent.
+
 ## Build, Test, and Development Commands
 - Xcode: open `SwiftChessDemo.xcodeproj` and run the `SwiftChessDemo` app target.
 - CLI build: `xcodebuild -project SwiftChessDemo.xcodeproj -scheme SwiftChessDemo -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17' build`

@@ -319,6 +319,47 @@ final class SwiftChessDemoUITests: XCTestCase {
         XCTAssertFalse(app.descendants(matching: .any)["Game.enginePicker"].firstMatch.exists)
     }
 
+    func testStockfishVersusArasanAt250MillisecondsWithFastPacing() throws {
+        let app = testApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
+        app.launch()
+
+        try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        try waitForGameBoardState(containing: "White engine: Stockfish", in: app, named: "White engine")
+        try waitForGameBoardState(containing: "Black engine: Arasan", in: app, named: "Black engine")
+        try waitForGameBoardState(containing: "White move time: 250ms", in: app, named: "White think time")
+        try waitForGameBoardState(containing: "Black move time: 250ms", in: app, named: "Black think time")
+
+        let pacingPicker = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoPacingPicker"].firstMatch,
+            named: "engine demo pacing picker"
+        )
+        try select("Fast", from: pacingPicker, in: app)
+        try waitForGameBoardState(containing: "Pacing: Fast", in: app, named: "Fast pacing")
+        let playbackButton = try requireElement(
+            app.descendants(matching: .any)["Game.engineDemoPlayPauseButton"].firstMatch,
+            named: "engine demo play button"
+        )
+        playbackButton.tap()
+
+        // Fast playback may advance multiple plies between UI snapshots. Check
+        // the recorded moves rather than requiring every intermediate board.
+        let sixthMove = app.descendants(matching: .any)["ChessUI.moveList.move.6"].firstMatch
+        XCTAssertTrue(sixthMove.waitForExistence(timeout: 30), "Both engines should complete six live plies")
+        playbackButton.tap()
+        try waitForGameBoardState(containing: "Demo state: Play", in: app, named: "paused after live moves")
+        for ply in 1...6 {
+            let move = try requireElement(
+                app.descendants(matching: .any)["ChessUI.moveList.move.\(ply)"].firstMatch,
+                named: "live move \(ply)"
+            )
+            XCTAssertTrue(move.label.contains(ply.isMultiple(of: 2) ? "Black" : "White"))
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+        attachScreenshot(from: app, named: "Stockfish versus Arasan - 250ms Fast")
+    }
+
     func testArasanVersusArasanEngineDemoCompletesSixLivePlies() throws {
         let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"

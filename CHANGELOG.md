@@ -5,6 +5,25 @@ All notable changes to SwiftChessDemo should be documented in this file.
 Entries stay under `Unreleased` until the repo is tagged or otherwise prepared
 for a release. Tagged releases use dated version headings.
 
+## Unreleased
+
+## 1.6.1 - 2026-10-09
+
+### Changed
+
+- Bundle Stockfish's matching `nn-252f33942263.nnue` network for the updated
+  sibling engine snapshot. The prior network layout is incompatible.
+- Adopt StockfishEmbedded 1.13.0 and published ArasanEmbedded 1.4.0 together,
+  with SwiftChessTools 1.4.0. Update the Arasan requirement and lockfile, retaining
+  serialized engine lifetimes and Stockfish suspend/resume between turns.
+- Prepare marketing version 1.6.1 (build 1) and align the release-validation
+  version assertion.
+
+### Added
+
+- Live Stockfish-versus-Arasan UI coverage at 250 ms think time with Fast
+  pacing, plus an explicit app-bundle assertion for the matching Stockfish net.
+
 ## 1.6.0 - 2026-10-08
 
 ### Added

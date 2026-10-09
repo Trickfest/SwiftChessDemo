@@ -41,19 +41,20 @@ x86_64 simulator build is not a supported configuration.
 
 ### Release dependency baseline
 
-SwiftChessDemo 1.6.0 uses these coordinated source versions:
+SwiftChessDemo 1.6.1 uses these coordinated source versions:
 
 | Dependency | Version | Resolution |
 | --- | --- | --- |
 | SwiftChessTools | 1.4.0 | Local sibling checkout; required for timeline/navigation APIs |
-| StockfishEmbedded | 1.12.1 | Local sibling checkout and its verified NNUE asset |
-| ArasanEmbedded | 1.3.0 | Existing remote revision recorded in Package.resolved |
+| StockfishEmbedded | 1.13.0 | Local sibling checkout and its verified NNUE asset |
+| ArasanEmbedded | 1.4.0 | Published remote revision recorded in Package.resolved |
 
-The Arasan package requirement remains 1.3.0 or later within major version 1;
-the committed lockfile selects 1.3.0. This release does not upgrade that pin.
+The Arasan package requirement is 1.4.0 or later within major version 1;
+the committed lockfile selects 1.4.0. These engines embed Stockfish upstream
+`49ea5ded` with `nn-252f33942263.nnue` and Arasan upstream `d0133000` with
+`arasanv8-20261005.nnue`.
 Local path dependencies are not version-pinned by SwiftPM, so use the matching
-sibling source versions. Final release-candidate validation is performed
-separately before tagging.
+sibling source versions.
 
 ### Checkout layout
 
@@ -83,9 +84,9 @@ swift-chess-demo-dev/
 ```
 
 Required after clone: initialize the sibling `../StockfishEmbedded` checkout.
-NNUE is the roughly 94 MB neural-network data file Stockfish uses to evaluate
-chess positions. It is not in Git because it is large. This is a one-command
-developer setup step:
+NNUE is the roughly 99 MB (94 MiB) neural-network data file Stockfish uses to
+evaluate chess positions. It is not in Git because it is large. This is a
+one-command developer setup step:
 
 ```
 (cd StockfishEmbedded && Scripts/download-nnue.sh)
@@ -126,7 +127,7 @@ Human vs Engine and Engine vs Engine modes. It adjusts the selected piece set
 immediately, including moving pieces and promotion choices. **Default** restores
 that set's bundled size. Each set remembers its value during the current game;
 a new game starts with package defaults. This demonstrates SwiftChessTools'
-`ChessBoardModel.pieceRenderingScaleOverrides` API. SwiftChessDemo 1.6.0
+`ChessBoardModel.pieceRenderingScaleOverrides` API. The demo
 requires the sibling SwiftChessTools checkout at 1.4.0 or later.
 
 ### Game history navigation

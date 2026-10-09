@@ -16,7 +16,7 @@
 		D4D200000000000000000002 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		D4D200000000000000000007 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		F1E000000000000000000001 /* SFEngine in Frameworks */ = {isa = PBXBuildFile; productRef = F1E000000000000000000004 /* SFEngine */; };
-		F1E000000000000000000002 /* nn-134a887f4c8f.nnue in Resources */ = {isa = PBXBuildFile; fileRef = F1E000000000000000000003 /* nn-134a887f4c8f.nnue */; };
+		F1E000000000000000000002 /* nn-252f33942263.nnue in Resources */ = {isa = PBXBuildFile; fileRef = F1E000000000000000000003 /* nn-252f33942263.nnue */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,7 +42,7 @@
 		E4F100000000000000000001 /* SwiftChessDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0A100000000000000000001 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		F0A100000000000000000002 /* Signing.local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Signing.local.xcconfig.example; sourceTree = "<group>"; };
-		F1E000000000000000000003 /* nn-134a887f4c8f.nnue */ = {isa = PBXFileReference; lastKnownFileType = file; name = "nn-134a887f4c8f.nnue"; path = "../StockfishEmbedded/Resources/NNUE/nn-134a887f4c8f.nnue"; sourceTree = SOURCE_ROOT; };
+		F1E000000000000000000003 /* nn-252f33942263.nnue */ = {isa = PBXFileReference; lastKnownFileType = file; name = "nn-252f33942263.nnue"; path = "../StockfishEmbedded/Resources/NNUE/nn-252f33942263.nnue"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -113,7 +113,7 @@
 		98B1DCE8F742402ABA9F1B83 /* Dependencies */ = {
 			isa = PBXGroup;
 			children = (
-				F1E000000000000000000003 /* nn-134a887f4c8f.nnue */,
+				F1E000000000000000000003 /* nn-252f33942263.nnue */,
 			);
 			name = Dependencies;
 			sourceTree = "<group>";
@@ -280,7 +280,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F1E000000000000000000002 /* nn-134a887f4c8f.nnue in Resources */,
+				F1E000000000000000000002 /* nn-252f33942263.nnue in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -478,7 +478,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -510,7 +510,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemo";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -536,7 +536,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -561,7 +561,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -587,7 +587,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -614,7 +614,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(SWIFT_CHESS_DEMO_BUNDLE_ID_PREFIX).SwiftChessDemoTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -685,7 +685,7 @@
 			repositoryURL = "https://github.com/Trickfest/ArasanEmbedded.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.3.0;
+				minimumVersion = 1.4.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

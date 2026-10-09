@@ -26,7 +26,7 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
   - Upstream: https://github.com/Trickfest/StockfishEmbedded
   - Path: `../StockfishEmbedded`
   - Product: `SFEngine` (local Swift package)
-  - Coordinated source release: `1.12.1`.
+  - Coordinated source release: `1.13.0`, embedding Stockfish upstream `49ea5ded`.
   - Runtime asset: the verified sibling NNUE file is copied into the app bundle
     and supplied to the engine by local file URL.
   - License: GNU General Public License v3.0 in `../StockfishEmbedded/LICENSE`
@@ -35,8 +35,8 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
     GPLv3 license text and corresponding source information required by GPLv3.
 - ArasanEmbedded
   - Upstream: https://github.com/Trickfest/ArasanEmbedded
-  - Minimum release: `1.3.0`; resolved release: `1.3.0` at
-    `851370051b4ebb1221136148a46d4a84ddf50866`, as recorded in Package.resolved.
+  - Minimum release: `1.4.0`; resolved release: `1.4.0` at
+    `eeacabe21a67091a7c33b3a9aeefd54071643fa8`, as recorded in Package.resolved.
   - Product: `ArasanEmbedded`
   - License: MIT License in the package's `LICENSE`
   - Includes selected Arasan engine source, distributed under Arasan's
