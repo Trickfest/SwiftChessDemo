@@ -15,7 +15,7 @@ and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
 parent folder does not need to be a Git repo. `ArasanEmbedded` is resolved by
 Swift Package Manager from its public GitHub repository.
 
-The validated development host is an Apple-silicon Mac with Xcode 27. The app
+The validated development host is an Apple-silicon Mac with Xcode 27.1. The app
 uses Swift 6 language mode and targets iOS 26. Arasan's current source snapshot
 is arm64-only, so do not treat
 an x86_64 simulator build failure as an app regression.
@@ -109,6 +109,11 @@ source dependencies locally.
   perspectives. They launch named scenarios in `testDrivesWhite` or
   `testDrivesBlack` mode so engine-side moves are deterministic and not coupled
   to live engine startup time or best-move changes.
+- Matching real-provider tests validate legal moves and terminal-position
+  recovery for both engines. Live UI checks cover human play against each
+  engine and both Stockfish/Arasan color assignments at 250 ms with Fast pacing.
+  Keep these separate from the deterministic scenario tests; do not assert
+  identical engine moves, scores, or strength.
 - `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS=250` keeps UI-test searches fast.
   `SWIFT_CHESS_DEMO_UI_TEST_ENGINE_REPLY_DELAY=1.0` can reduce the visible
   thinking pause for tests that still exercise live engine replies. Normal app

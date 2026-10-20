@@ -34,25 +34,25 @@ These screenshots predate the history-navigation controls described below.
 
 ## Setup
 
-The validated development host is Xcode 27 on an Apple-silicon Mac. The app
+The validated development host is Xcode 27.1 on an Apple-silicon Mac. The app
 uses Swift 6 language mode and targets iOS 26. The current Arasan source
 snapshot intentionally supports arm64 only, so an
 x86_64 simulator build is not a supported configuration.
 
 ### Release dependency baseline
 
-SwiftChessDemo 1.6.1 uses these coordinated source versions:
+SwiftChessDemo 1.6.2 uses these coordinated source versions:
 
 | Dependency | Version | Resolution |
 | --- | --- | --- |
 | SwiftChessTools | 1.4.0 | Local sibling checkout; required for timeline/navigation APIs |
-| StockfishEmbedded | 1.13.0 | Local sibling checkout and its verified NNUE asset |
-| ArasanEmbedded | 1.4.0 | Published remote revision recorded in Package.resolved |
+| StockfishEmbedded | 1.14.0 | Local sibling checkout and its verified NNUE asset |
+| ArasanEmbedded | 1.5.0 | Published remote revision recorded in Package.resolved |
 
-The Arasan package requirement is 1.4.0 or later within major version 1;
-the committed lockfile selects 1.4.0. These engines embed Stockfish upstream
-`49ea5ded` with `nn-252f33942263.nnue` and Arasan upstream `d0133000` with
-`arasanv8-20261005.nnue`.
+These engines embed Stockfish upstream `effdc3fd` with
+`nn-c9e480e92425.nnue` and Arasan upstream `5d6be86c` with
+`arasanv8-20261005.nnue`. The Arasan package requirement is 1.5.0 or later
+within major version 1; the committed lockfile selects published 1.5.0.
 Local path dependencies are not version-pinned by SwiftPM, so use the matching
 sibling source versions.
 
@@ -84,7 +84,7 @@ swift-chess-demo-dev/
 ```
 
 Required after clone: initialize the sibling `../StockfishEmbedded` checkout.
-NNUE is the roughly 99 MB (94 MiB) neural-network data file Stockfish uses to
+NNUE is the roughly 113 MB (108 MiB) neural-network data file Stockfish uses to
 evaluate chess positions. It is not in Git because it is large. This is a
 one-command developer setup step:
 
@@ -364,6 +364,13 @@ Scripts/validate.sh
 - The shared local scheme includes both fast scenario unit tests and full UI
   tests. The unit tests run inside the demo app host so `Bundle.main` loads the
   same bundled scenarios the app uses at runtime.
+- Both real embedded providers search the same opening, Black-to-move,
+  promotion, checkmate, and stalemate positions, then search again after the
+  terminal positions. Assertions check legal moves and exact request identity,
+  not matching engine choices or scores. Shared fake-transport tests exercise
+  readiness replacement, timeouts, late output, and cross-engine teardown with
+  each wrapper's actual startup sequence; Stockfish suspend/resume remains a
+  separate engine-specific check.
 - Scenario replay tests set `SWIFT_CHESS_DEMO_SCENARIO=<scenario-id>` and
   optionally `SWIFT_CHESS_DEMO_SCENARIO_REPLAY_DELAY=0`. Each scenario id maps
   to a JSON file in `SwiftChessDemo/Scenarios`; the JSON points at the PGN
@@ -385,6 +392,10 @@ Scripts/validate.sh
   engine-demo controls off the setup screen, then launches into a paused game
   with demo-only playback controls visible and the normal live-game engine
   picker hidden.
+- Live UI tests play two human moves against each engine and verify two legal
+  replies. Mixed-engine matches run at 250 ms with Fast pacing in both color
+  assignments and verify six recorded plies. These complement, rather than
+  replace, deterministic scenario tests and owner testing on physical devices.
 - History model tests verify read-only browsing, live replies while an older
   position stays selected, return-to-live play, explicit draw outcomes, reset,
   settings retention, and rejection of stale same-position engine requests.

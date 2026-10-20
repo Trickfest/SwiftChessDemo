@@ -19,8 +19,90 @@ final class StockfishNetworkResourceTests: XCTestCase {
         let networkURL = try XCTUnwrap(StockfishNetworkResource.bundledFileURL())
 
         XCTAssertEqual(networkURL.lastPathComponent, StockfishNetworkResource.fileName)
-        XCTAssertEqual(networkURL.lastPathComponent, "nn-252f33942263.nnue")
+        XCTAssertEqual(networkURL.lastPathComponent, "nn-c9e480e92425.nnue")
         XCTAssertTrue(FileManager.default.fileExists(atPath: networkURL.path))
+    }
+}
+
+@MainActor
+final class EmbeddedEngineProviderIntegrationTests: XCTestCase {
+    func testStockfishReturnsLegalMovesAndRecoversAfterTerminalPositions() async throws {
+        try await assertCommonPositions(engineKind: .stockfish)
+    }
+
+    func testArasanReturnsLegalMovesAndRecoversAfterTerminalPositions() async throws {
+        try await assertCommonPositions(engineKind: .arasan)
+    }
+
+    private func assertCommonPositions(engineKind: DemoEngineKind) async throws {
+        // Independently authored fixtures shared by both real providers. Check
+        // rules and request identity, not engine strength or a preferred move.
+        let start = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        let positions = [
+            start,
+            "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+            "7k/P7/8/8/8/8/8/7K w - - 0 1",
+            "7k/6Q1/5K2/8/8/8/8/8 b - - 0 1", // checkmate
+            "k7/2Q5/2K5/8/8/8/8/8 b - - 0 1", // stalemate
+            start, // the same provider must search again after no-move output
+        ]
+        var events: [EngineProviderEvent] = []
+        var completion: XCTestExpectation?
+        let handler: DemoEngineEventHandler = { event in
+            events.append(event)
+            switch event {
+            case .output(.bestMove, _), .failure, .timeout, .timeoutWithoutBestMove:
+                completion?.fulfill()
+                completion = nil
+            case .output:
+                break
+            }
+        }
+        let provider: any DemoEngineProvider
+        switch engineKind {
+        case .stockfish: provider = StockfishMoveProvider(eventHandler: handler)
+        case .arasan: provider = ArasanMoveProvider(eventHandler: handler)
+        }
+        defer { provider.stop() }
+
+        for (index, fen) in positions.enumerated() {
+            let game = Game(position: try FENSerializer().position(from: fen))
+            let request = EngineSearchRequest(
+                engineKind: engineKind, purpose: .opponentMove, fen: fen,
+                sideToMove: game.position.state.turn,
+                moveTimeMilliseconds: 250, multiPVCount: 1, safetyTimeoutSeconds: 10
+            )
+            events = []
+            let finished = expectation(description: "\(engineKind.displayName) fixture \(index)")
+            completion = finished
+            provider.startOrQueueSearch(request)
+            await fulfillment(of: [finished], timeout: 15)
+            completion = nil
+            let results = events.compactMap { event -> UCIBestMove? in
+                if case .output(.bestMove(let bestMove), let outputRequest) = event {
+                    XCTAssertEqual(outputRequest, request)
+                    return bestMove
+                }
+                return nil
+            }
+            XCTAssertEqual(results.count, 1, "Expected one bestmove for \(engineKind): \(events)")
+            guard results.count == 1 else { break }
+            if game.legalMoves.isEmpty {
+                XCTAssertNil(results[0].move)
+            } else {
+                let move = try XCTUnwrap(results[0].move)
+                XCTAssertTrue(game.legalMoves.contains(move), "Illegal engine move for \(fen)")
+            }
+            XCTAssertFalse(events.contains { event in
+                switch event {
+                case .failure, .timeout, .timeoutWithoutBestMove: return true
+                case .output: return false
+                }
+            })
+            XCTAssertFalse(provider.isBusy)
+        }
+        provider.stop()
+        await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
     }
 }
 
@@ -2036,34 +2118,35 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testReplacingAnalysisDuringReadinessRestartsPreparation() async {
-        let transport = RecordingEmbeddedEngineTransport()
-        let session = makeSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            transport: transport
-        )
-        defer { session.stop() }
-        let first = makeRequest(engineKind: .stockfish, fen: "first", multiPVCount: 3)
-        let replacement = makeRequest(engineKind: .stockfish, fen: "replacement")
+        for engineKind in DemoEngineKind.allCases {
+            let transport = RecordingEmbeddedEngineTransport()
+            let session = makeSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                transport: transport
+            )
+            defer { session.stop() }
+            let first = makeRequest(engineKind: engineKind, fen: "first", multiPVCount: 3)
+            let replacement = makeRequest(engineKind: engineKind, fen: "replacement")
 
-        session.startOrQueueSearch(first)
-        await waitUntil { transport.commands == ["uci"] }
-        transport.emit("uciok")
-        await waitUntil { transport.commands.count == 4 }
+            session.startOrQueueSearch(first)
+            guard await advanceToPreparation(engineKind: engineKind, transport: transport) else { return }
+            let preparationCount = transport.commands.count
 
-        session.cancelAnalysisSearch(queueReplacement: replacement)
-        transport.emit("readyok")
-        await waitUntil { transport.commands.count == 7 }
-        XCTAssertEqual(Array(transport.commands.suffix(3)), [
-            "setoption name MultiPV value 1",
-            "ucinewgame",
-            "isready",
-        ])
-        XCTAssertFalse(transport.commands.contains { $0.hasPrefix("position") })
+            session.cancelAnalysisSearch(queueReplacement: replacement)
+            transport.emit("readyok")
+            await waitUntil { transport.commands.count == preparationCount + 3 }
+            XCTAssertEqual(Array(transport.commands.suffix(3)), [
+                "setoption name MultiPV value 1",
+                "ucinewgame",
+                "isready",
+            ])
+            XCTAssertFalse(transport.commands.contains { $0.hasPrefix("position") })
 
-        transport.emit("readyok")
-        guard await waitUntil({ transport.commands.count == 9 }) else { return }
-        XCTAssertEqual(transport.commands[7], "position fen replacement")
+            transport.emit("readyok")
+            guard await waitUntil({ transport.commands.count == preparationCount + 5 }) else { return }
+            XCTAssertEqual(transport.commands[preparationCount + 3], "position fen replacement")
+        }
     }
 
     func testStartupFailureClearsActiveRequestBeforeReportingFailure() async {
@@ -2099,83 +2182,89 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testHandshakeTimeoutFailsRequestAndDiscardsTransport() async {
-        let transport = RecordingEmbeddedEngineTransport()
-        var events: [EngineProviderEvent] = []
-        let session = EmbeddedEngineProviderSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
-            transportFactory: { handler in
-                transport.install(lineHandler: handler)
-                return transport
-            },
-            eventHandler: { events.append($0) },
-            handshakeTimeout: .milliseconds(25)
-        )
-        defer { session.stop() }
-        let request = makeRequest(engineKind: .stockfish)
+        for engineKind in DemoEngineKind.allCases {
+            let transport = RecordingEmbeddedEngineTransport()
+            var events: [EngineProviderEvent] = []
+            let session = EmbeddedEngineProviderSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
+                transportFactory: { handler in
+                    transport.install(lineHandler: handler)
+                    return transport
+                },
+                eventHandler: { events.append($0) },
+                handshakeTimeout: .milliseconds(25)
+            )
+            defer { session.stop() }
+            let request = makeRequest(engineKind: engineKind)
 
-        session.startOrQueueSearch(request)
+            session.startOrQueueSearch(request)
 
-        guard await waitUntil({ !events.isEmpty }) else { return }
-        XCTAssertEqual(
-            events,
-            [.failure(message: "Timed out waiting for engine readiness.", request: request)]
-        )
-        XCTAssertEqual(transport.commands, ["uci"])
-        XCTAssertNil(session.activePurpose)
-        XCTAssertFalse(session.isBusy)
+            guard await waitUntil({ !events.isEmpty }) else { return }
+            XCTAssertEqual(
+                events,
+                [.failure(message: "Timed out waiting for engine readiness.", request: request)]
+            )
+            XCTAssertEqual(transport.commands, engineKind == .stockfish ? ["uci"] : [])
+            XCTAssertNil(session.activePurpose)
+            XCTAssertFalse(session.isBusy)
+        }
     }
 
     func testStopRejectsLateOutputFromDiscardedTransport() async {
-        let transport = RecordingEmbeddedEngineTransport()
-        let session = makeSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            transport: transport
-        )
-        let request = makeRequest(engineKind: .stockfish)
+        for engineKind in DemoEngineKind.allCases {
+            let transport = RecordingEmbeddedEngineTransport()
+            let session = makeSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                transport: transport
+            )
+            let request = makeRequest(engineKind: engineKind)
 
-        session.startOrQueueSearch(request)
-        guard await waitUntil({ transport.commands == ["uci"] }) else { return }
-        session.stop()
-        transport.emit("uciok")
-        transport.emit("readyok")
-        await Task.yield()
+            session.startOrQueueSearch(request)
+            guard await waitUntil({ transport.hasLineHandler }) else { return }
+            session.stop()
+            transport.emit("uciok")
+            transport.emit("readyok")
+            await Task.yield()
 
-        XCTAssertEqual(transport.commands, ["uci"])
-        XCTAssertNil(session.activePurpose)
-        XCTAssertFalse(session.isBusy)
+            XCTAssertEqual(transport.commands, engineKind == .stockfish ? ["uci"] : [])
+            XCTAssertNil(session.activePurpose)
+            XCTAssertFalse(session.isBusy)
+        }
     }
 
     func testReplacementStartWaitsForPriorCrossEngineTeardown() async {
-        let coordinator = EmbeddedEngineLifecycleCoordinator()
-        let priorTransport = BlockingEmbeddedEngineTransport()
-        let replacementTransport = RecordingEmbeddedEngineTransport()
-        coordinator.enqueueTeardown(of: priorTransport)
+        for engineKind in DemoEngineKind.allCases {
+            let coordinator = EmbeddedEngineLifecycleCoordinator()
+            let priorTransport = BlockingEmbeddedEngineTransport()
+            let replacementTransport = RecordingEmbeddedEngineTransport()
+            coordinator.enqueueTeardown(of: priorTransport)
 
-        let session = EmbeddedEngineProviderSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            lifecycleCoordinator: coordinator,
-            transportFactory: { handler in
-                replacementTransport.install(lineHandler: handler)
-                return replacementTransport
-            },
-            eventHandler: { _ in }
-        )
-        defer {
+            let session = EmbeddedEngineProviderSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                lifecycleCoordinator: coordinator,
+                transportFactory: { handler in
+                    replacementTransport.install(lineHandler: handler)
+                    return replacementTransport
+                },
+                eventHandler: { _ in }
+            )
+            defer {
+                priorTransport.allowStopToFinish()
+                session.stop()
+            }
+
+            session.startOrQueueSearch(makeRequest(engineKind: engineKind))
+            guard await waitUntil({ priorTransport.stopHasStarted }) else { return }
+            XCTAssertFalse(replacementTransport.hasLineHandler)
+
             priorTransport.allowStopToFinish()
-            session.stop()
+            guard await waitUntil({ replacementTransport.hasLineHandler }) else { return }
+            XCTAssertEqual(replacementTransport.commands, engineKind == .stockfish ? ["uci"] : [])
         }
-
-        session.startOrQueueSearch(makeRequest(engineKind: .stockfish))
-        guard await waitUntil({ priorTransport.stopHasStarted }) else { return }
-        XCTAssertFalse(replacementTransport.hasLineHandler)
-
-        priorTransport.allowStopToFinish()
-        guard await waitUntil({ replacementTransport.hasLineHandler }) else { return }
-        XCTAssertEqual(replacementTransport.commands, ["uci"])
     }
 
     func testSuspendableTransportIsResumedInsteadOfRecreated() async {
@@ -2225,68 +2314,72 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testSearchTimeoutRequestsStopAndAcceptsLateBestMove() async {
-        let transport = RecordingEmbeddedEngineTransport()
-        var events: [EngineProviderEvent] = []
-        let session = EmbeddedEngineProviderSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
-            transportFactory: { handler in
-                transport.install(lineHandler: handler)
-                return transport
-            },
-            eventHandler: { events.append($0) },
-            bestMoveAfterStopTimeout: .seconds(1),
-            searchTimeoutOverride: .milliseconds(25)
-        )
-        defer { session.stop() }
-        let request = makeRequest(engineKind: .stockfish)
+        for engineKind in DemoEngineKind.allCases {
+            let transport = RecordingEmbeddedEngineTransport()
+            var events: [EngineProviderEvent] = []
+            let session = EmbeddedEngineProviderSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
+                transportFactory: { handler in
+                    transport.install(lineHandler: handler)
+                    return transport
+                },
+                eventHandler: { events.append($0) },
+                bestMoveAfterStopTimeout: .seconds(1),
+                searchTimeoutOverride: .milliseconds(25)
+            )
+            defer { session.stop() }
+            let request = makeRequest(engineKind: engineKind)
 
-        session.startOrQueueSearch(request)
-        guard await advanceStockfishToSearching(transport: transport) else { return }
-        guard await waitUntil({ events.contains(.timeout(request)) }) else { return }
-        XCTAssertEqual(transport.commands.last, "stop")
+            session.startOrQueueSearch(request)
+            guard await advanceToSearching(engineKind: engineKind, transport: transport) else { return }
+            guard await waitUntil({ events.contains(.timeout(request)) }) else { return }
+            XCTAssertEqual(transport.commands.last, "stop")
 
-        transport.emit("bestmove e2e4")
-        guard await waitUntil({
-            events.contains {
-                guard case .output(.bestMove(_), let outputRequest) = $0 else { return false }
-                return outputRequest == request
-            }
-        }) else { return }
-        XCTAssertFalse(events.contains(.timeoutWithoutBestMove(request)))
-        XCTAssertNil(session.activePurpose)
+            transport.emit("bestmove e2e4")
+            guard await waitUntil({
+                events.contains {
+                    guard case .output(.bestMove(_), let outputRequest) = $0 else { return false }
+                    return outputRequest == request
+                }
+            }) else { return }
+            XCTAssertFalse(events.contains(.timeoutWithoutBestMove(request)))
+            XCTAssertNil(session.activePurpose)
+        }
     }
 
     func testSearchTimeoutWithoutBestMoveEscalatesAndDiscardsTransport() async {
-        let transport = RecordingEmbeddedEngineTransport()
-        var events: [EngineProviderEvent] = []
-        let session = EmbeddedEngineProviderSession(
-            engineKind: .stockfish,
-            startupSequence: .providerSendsUCI,
-            lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
-            transportFactory: { handler in
-                transport.install(lineHandler: handler)
-                return transport
-            },
-            eventHandler: { events.append($0) },
-            bestMoveAfterStopTimeout: .milliseconds(25),
-            searchTimeoutOverride: .milliseconds(25)
-        )
-        defer { session.stop() }
-        let request = makeRequest(engineKind: .stockfish)
+        for engineKind in DemoEngineKind.allCases {
+            let transport = RecordingEmbeddedEngineTransport()
+            var events: [EngineProviderEvent] = []
+            let session = EmbeddedEngineProviderSession(
+                engineKind: engineKind,
+                startupSequence: startupSequence(for: engineKind),
+                lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
+                transportFactory: { handler in
+                    transport.install(lineHandler: handler)
+                    return transport
+                },
+                eventHandler: { events.append($0) },
+                bestMoveAfterStopTimeout: .milliseconds(25),
+                searchTimeoutOverride: .milliseconds(25)
+            )
+            defer { session.stop() }
+            let request = makeRequest(engineKind: engineKind)
 
-        session.startOrQueueSearch(request)
-        guard await advanceStockfishToSearching(transport: transport) else { return }
-        guard await waitUntil({ events.contains(.timeoutWithoutBestMove(request)) }) else { return }
+            session.startOrQueueSearch(request)
+            guard await advanceToSearching(engineKind: engineKind, transport: transport) else { return }
+            guard await waitUntil({ events.contains(.timeoutWithoutBestMove(request)) }) else { return }
 
-        XCTAssertEqual(Array(events.suffix(2)), [
-            .timeout(request),
-            .timeoutWithoutBestMove(request),
-        ])
-        XCTAssertTrue(transport.commands.contains("stop"))
-        XCTAssertNil(session.activePurpose)
-        XCTAssertFalse(session.isBusy)
+            XCTAssertEqual(Array(events.suffix(2)), [
+                .timeout(request),
+                .timeoutWithoutBestMove(request),
+            ])
+            XCTAssertTrue(transport.commands.contains("stop"))
+            XCTAssertNil(session.activePurpose)
+            XCTAssertFalse(session.isBusy)
+        }
     }
 
     private func makeSession(
@@ -2322,14 +2415,33 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
         )
     }
 
-    private func advanceStockfishToSearching(
+    private func startupSequence(for engineKind: DemoEngineKind) -> EmbeddedEngineStartupSequence {
+        engineKind == .stockfish ? .providerSendsUCI : .transportSendsUCIAndReady
+    }
+
+    private func advanceToPreparation(
+        engineKind: DemoEngineKind,
         transport: RecordingEmbeddedEngineTransport
     ) async -> Bool {
-        guard await waitUntil({ transport.commands == ["uci"] }) else { return false }
+        guard await waitUntil({ transport.hasLineHandler }) else { return false }
         transport.emit("uciok")
-        guard await waitUntil({ transport.commands.count == 4 }) else { return false }
+        if engineKind == .arasan {
+            transport.emit("readyok")
+        }
+        let expectedCount = engineKind == .stockfish ? 4 : 3
+        return await waitUntil { transport.commands.count == expectedCount }
+    }
+
+    private func advanceToSearching(
+        engineKind: DemoEngineKind,
+        transport: RecordingEmbeddedEngineTransport
+    ) async -> Bool {
+        guard await advanceToPreparation(engineKind: engineKind, transport: transport) else {
+            return false
+        }
+        let expectedCount = transport.commands.count + 2
         transport.emit("readyok")
-        return await waitUntil { transport.commands.count == 6 }
+        return await waitUntil { transport.commands.count == expectedCount }
     }
 
     @discardableResult

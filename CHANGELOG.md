@@ -7,6 +7,28 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.6.2 - 2026-10-20
+
+### Changed
+
+- Adopt StockfishEmbedded 1.14.0 and published ArasanEmbedded 1.5.0,
+  retaining SwiftChessTools 1.4.0 and serialized engine lifetimes.
+- Bundle Stockfish's matching `nn-c9e480e92425.nnue` network for its SFNNv18
+  source update. The previous network layout is incompatible.
+- Align marketing version 1.6.2 (build 1) and the release-validation assertion.
+  Resolve Arasan from its published GitHub release and retain the permanent
+  Stockfish/SwiftChessTools sibling dependencies.
+
+### Tests
+
+- Exercise the same legal-move, promotion, terminal-position, and recovery
+  contract through both real engine providers.
+- Cover common readiness replacement, timeout, stale-output, and teardown
+  behavior with both wrappers' legitimate startup sequences.
+- Add live human-versus-each-engine UI checks and reverse the mixed-engine
+  colors at 250 ms with Fast pacing. No provider implementation or public
+  engine API changes are made.
+
 ## 1.6.1 - 2026-10-09
 
 ### Changed

@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Trickfest/ArasanEmbedded.git",
       "state" : {
-        "revision" : "eeacabe21a67091a7c33b3a9aeefd54071643fa8",
-        "version" : "1.4.0"
+        "revision" : "56655d88ea76116c98e4527b652f41367842d0d0",
+        "version" : "1.5.0"
       }
     }
   ],

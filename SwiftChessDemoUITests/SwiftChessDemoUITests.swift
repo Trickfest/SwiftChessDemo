@@ -320,14 +320,72 @@ final class SwiftChessDemoUITests: XCTestCase {
     }
 
     func testStockfishVersusArasanAt250MillisecondsWithFastPacing() throws {
+        try assertLiveEngineMatch(white: "Stockfish", black: "Arasan")
+    }
+
+    func testArasanVersusStockfishAt250MillisecondsWithFastPacing() throws {
+        try assertLiveEngineMatch(white: "Arasan", black: "Stockfish")
+    }
+
+    func testHumanVersusStockfishCompletesTwoLiveReplies() throws {
+        try assertHumanVersusLiveEngine("Stockfish")
+    }
+
+    func testHumanVersusArasanCompletesTwoLiveReplies() throws {
+        try assertHumanVersusLiveEngine("Arasan")
+    }
+
+    private func assertHumanVersusLiveEngine(_ engine: String) throws {
+        let app = testApplication()
+        app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
+        app.launch()
+        try requireElement(app.buttons["Start Game"], named: "start game button").tap()
+        if engine != "Stockfish" {
+            let picker = app.descendants(matching: .any)["Game.enginePicker"].firstMatch
+            try scrollUntilHittable(picker, named: "game engine picker", in: app)
+            try select(engine, from: picker, in: app)
+        }
+        try waitForGameBoardState(containing: "Engine: \(engine)", in: app, named: "live opponent")
+        var position = try displayedFEN(in: app)
+        for (index, move) in [("e2", "e4"), ("g1", "f3")].enumerated() {
+            let squares = try revealReadOnlySquares([move.0, move.1], in: app)
+            squares[0].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            squares[1].coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            // The engine may reply before the next UI snapshot. Wait for the
+            // changed White-to-move board and recorded reply, not a fixed move.
+            try waitForLivePly(atLeast: (index + 1) * 2, in: app)
+            let afterReply = try displayedFEN(in: app)
+            XCTAssertNotEqual(afterReply, position)
+            XCTAssertTrue(afterReply.contains(FENTurn.white.token))
+            position = afterReply
+            let reply = try requireElement(
+                app.descendants(matching: .any)["ChessUI.moveList.move.\((index + 1) * 2)"].firstMatch,
+                named: "live \(engine) reply record"
+            )
+            XCTAssertTrue(reply.label.contains("Black"))
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+        attachScreenshot(from: app, named: "Human versus \(engine) - two live replies")
+    }
+
+    private func assertLiveEngineMatch(white: String, black: String) throws {
         let app = testApplication()
         app.launchEnvironment["SWIFT_CHESS_DEMO_UI_TEST_ENGINE_MOVE_TIME_MS"] = "250"
         app.launch()
 
         try requireElement(app.buttons["Engine vs Engine"].firstMatch, named: "engine demo mode").tap()
         try requireElement(app.buttons["Start Game"], named: "start game button").tap()
-        try waitForGameBoardState(containing: "White engine: Stockfish", in: app, named: "White engine")
-        try waitForGameBoardState(containing: "Black engine: Arasan", in: app, named: "Black engine")
+        for (color, engine) in [("White", white), ("Black", black)] {
+            let picker = try requireElement(
+                app.descendants(matching: .any)["Game.engineDemo\(color)EnginePicker"].firstMatch,
+                named: "\(color) engine picker"
+            )
+            if picker.value as? String != engine {
+                try scrollUntilHittable(picker, named: "\(color) engine picker", in: app)
+                try select(engine, from: picker, in: app)
+            }
+            try waitForGameBoardState(containing: "\(color) engine: \(engine)", in: app, named: "\(color) engine")
+        }
         try waitForGameBoardState(containing: "White move time: 250ms", in: app, named: "White think time")
         try waitForGameBoardState(containing: "Black move time: 250ms", in: app, named: "Black think time")
 
@@ -357,7 +415,7 @@ final class SwiftChessDemoUITests: XCTestCase {
             XCTAssertTrue(move.label.contains(ply.isMultiple(of: 2) ? "Black" : "White"))
         }
         XCTAssertEqual(app.state, .runningForeground)
-        attachScreenshot(from: app, named: "Stockfish versus Arasan - 250ms Fast")
+        attachScreenshot(from: app, named: "\(white) versus \(black) - 250ms Fast")
     }
 
     func testArasanVersusArasanEngineDemoCompletesSixLivePlies() throws {
