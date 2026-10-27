@@ -1,5 +1,5 @@
 {
-  "originHash" : "c048cbbe63efc4b36d327b5de01dbba798aed5f4f39888e163298a5781ab47d6",
+  "originHash" : "1054007f37c62c2121a476118bdb77e6bf91810ffd8e7b9a928a8780e091b5bf",
   "pins" : [
     {
       "identity" : "arasanembedded",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "56655d88ea76116c98e4527b652f41367842d0d0",
         "version" : "1.5.0"
+      }
+    },
+    {
+      "identity" : "maiaembedded",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Trickfest/MaiaEmbedded.git",
+      "state" : {
+        "revision" : "b5a84186513a962312f2f6bf0a03ab7d3c5c22ea",
+        "version" : "1.0.0"
       }
     },
     {

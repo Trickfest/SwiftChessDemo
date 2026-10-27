@@ -6,7 +6,7 @@ SIMULATOR_DESTINATION="${SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION:-platform=iOS Si
 TEST_DERIVED_DATA="${SWIFT_CHESS_DEMO_TEST_DERIVED_DATA:-.build/xcode-swiftchessdemo}"
 RELEASE_DERIVED_DATA="${SWIFT_CHESS_DEMO_RELEASE_DERIVED_DATA:-.build/xcode-swiftchessdemo-release}"
 SOURCE_PACKAGES_DIR="${SWIFT_CHESS_DEMO_SOURCE_PACKAGES_DIR:-$TEST_DERIVED_DATA/SourcePackages}"
-EXPECTED_MARKETING_VERSION="1.6.2"
+EXPECTED_MARKETING_VERSION="1.7.0"
 STOCKFISH_EVALUATE_HEADER="../StockfishEmbedded/ThirdParty/Stockfish/src/evaluate.h"
 
 cd "$ROOT_DIR"
@@ -52,7 +52,7 @@ if [[ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' \
   exit 1
 fi
 
-for dependency in ../SwiftChessTools ../StockfishEmbedded ../MaiaEmbedded; do
+for dependency in ../SwiftChessTools ../StockfishEmbedded; do
   if [[ ! -d "$dependency" ]]; then
     printf 'Missing required sibling checkout: %s\n' "$dependency" >&2
     exit 1
@@ -76,9 +76,9 @@ if ! grep -Fq "../StockfishEmbedded/Resources/NNUE/$stockfish_nnue_file" \
   exit 1
 fi
 
-maia_model_path="../MaiaEmbedded/Resources/Models/maia3-79m.onnx"
+maia_model_path="Resources/Models/maia3-79m.onnx"
 if [[ ! -f "$maia_model_path" ]]; then
-  printf '%s\n' 'Maia model missing. Run ../MaiaEmbedded/Scripts/download-model.sh.' >&2; exit 1
+  printf '%s\n' 'Maia model missing. Run Scripts/download-maia-model.sh.' >&2; exit 1
 fi
 
 printf 'Running app-hosted unit tests without simulator UI tests...\n'

@@ -12,8 +12,9 @@
 
 Public and local development both expect `SwiftChessDemo`, `SwiftChessTools`,
 and `StockfishEmbedded` to be sibling checkouts under any parent directory. The
-parent folder does not need to be a Git repo. `ArasanEmbedded` is resolved by
-Swift Package Manager from its public GitHub repository.
+parent folder does not need to be a Git repo. `ArasanEmbedded` and `MaiaEmbedded` resolve through Swift Package Manager from
+their public GitHub releases. Maia model weights are provisioned separately with
+`Scripts/download-maia-model.sh` and bundled from ignored `Resources/Models`.
 
 The validated development host is an Apple-silicon Mac with Xcode 27.1. The app
 uses Swift 6 language mode and targets iOS 26. Arasan's current source snapshot
@@ -132,17 +133,15 @@ source dependencies locally.
 - PRs should describe behavior changes and list manual verification steps; include screenshots/GIFs for UI changes.
 - Dependency changes must also update `THIRD_PARTY.md`.
 
-## Maia integration branch
+## Maia integration
 
-`branch/maia-integration` additionally uses private sibling `../MaiaEmbedded`
-products MaiaEmbedded/MaiaUCI and bundles its ignored provisioned 79M model.
-The user authorized this branch explicitly. Keep MaiaEmbedded private, preserve
-existing dependencies and do not publish a release. See Docs/MAIA.md.
+The app uses published MaiaEmbedded/MaiaUCI products through a remote SwiftPM
+reference. Preserve the existing SCT/Stockfish sibling paths and remote Arasan.
+Do not restore the old private Maia sibling override or commit model weights.
+See Docs/MAIA.md for behavior, source-only distribution and device evidence.
 
-For this implementation, the user requested avoiding unattended UI tests and
-postponing physical-device access to the final stage. Use Scripts/validate.sh
---headless for non-UI unit/integration and unsigned Release checks; report UI
-and physical checks separately. Do not represent skipped UI checks as passed.
-Stockfish/Arasan still require serialized process-stream ownership. Maia has
-instance-owned state but its asynchronous cleanup must finish before replacement
-loads to avoid unnecessary mobile memory overlap.
+The user requested avoiding unattended UI tests and postponing physical-device
+access to the final stage. Use Scripts/validate.sh --headless for non-UI tests
+and unsigned Release checks; report UI and physical checks separately. Do not
+represent skipped UI checks as passed. Stockfish/Arasan require serialized
+process-stream ownership. Maia cleanup must finish before replacement loads.

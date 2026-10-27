@@ -7,6 +7,11 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.7.0 - 2026-10-27
+
+- Consume public MaiaEmbedded 1.0.0 through SwiftPM and provision its verified
+  model in app-owned ignored storage, retaining the SCT/Stockfish sibling setup.
+
 - Allow Maia settings changes after an engine-demo game ends and carry them into
   Play Again; cover the rematch and active-play settings guard with a regression test.
 - Keep evaluation-bar geometry stable across move-engine switches. In games
@@ -15,15 +20,15 @@ for a release. Tagged releases use dated version headings.
 - Serialize evaluation with playback and guard score ownership, stale positions,
   pause/reset, cancellation and failure recovery without applying evaluator moves.
 
-- Add MaiaEmbedded/MaiaUCI through a private local sibling dependency on the
-  Maia integration branch, retaining existing Stockfish/SCT paths and remote Arasan.
+- Add MaiaEmbedded/MaiaUCI alongside Stockfish and Arasan, retaining existing
+  Stockfish/SCT paths and remote Arasan.
 - Add a Maia provider, ratings/sampling/history controls, likelihood suggestions
   and model bundling; keep human probabilities separate from engine evaluations.
 - Await asynchronous Maia cleanup through the shared lifecycle coordinator before
   replacing a transport, preserving other wrappers' stream-ownership ordering.
 - Cover Maia legal/terminal recovery, settings/history/stale events, both player
   colors and real mixed-engine games with both color assignments in non-UI tests.
-- Record AGPL notices and development-branch validation without publishing a release.
+- Record AGPL notices and local integration/device validation.
 
 ## 1.6.2 - 2026-10-20
 

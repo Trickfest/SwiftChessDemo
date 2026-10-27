@@ -11,32 +11,32 @@ Licensing note: SwiftChessDemo's original source code is licensed under the MIT
 License so it can be reused as reference app code. The default app target links
 with Stockfish through `../StockfishEmbedded`; distributing that combined
 Stockfish-linked app requires GPLv3 compliance. The app can also use the
-permissively licensed `ArasanEmbedded` Swift package as a second embedded engine.
+permissively licensed `ArasanEmbedded` and AGPL-3.0-only `MaiaEmbedded` packages.
+Combined app distribution must also account for Maia's package/model license.
 See `LICENSE`, `LICENSES/`, and `THIRD_PARTY.md` for details.
 
 Releases are source-only. This repository does not publish a prebuilt app,
 framework, library, or other binary artifact; users build the sibling source
 checkouts and Swift package dependency locally.
 
-## Maia development branch
+## Maia human-move engine
 
-This `branch/maia-integration` checkout adds Maia as a third engine. It requires
-an authorized **private** `../MaiaEmbedded` sibling checkout in addition to the
-public dependencies below. Provision its model with:
+Maia is the third embedded engine. Its public 1.0 package resolves through
+SwiftPM. Provision the separately downloaded model before building:
 
 ```sh
-(cd ../MaiaEmbedded && Scripts/download-model.sh)
+Scripts/download-maia-model.sh
 ```
 
-The project bundles that ignored 316 MB model and links MaiaEmbedded/MaiaUCI.
+The project bundles that ignored 316 MB model from `Resources/Models` and links
+MaiaEmbedded/MaiaUCI. No MaiaEmbedded sibling checkout is needed.
 Maia settings expose side-to-move/opponent Lichess ratings, temperature, TopP
 and optional recorded history. Suggestions show human-move likelihoods. The
 evaluation bar stays in place while Stockfish supplies independent scores;
 Maia still chooses its moves and suggestions. No Maia compatibility score is
 recorded as engine evaluation. Move-time controls do not change Maia strength.
 
-Both human colors and Maia versus Stockfish/Arasan are supported. This development
-branch is separate from the public release baseline below; it has no new release.
+Both human colors and Maia versus Stockfish/Arasan are supported.
 See [Maia integration](Docs/MAIA.md) for lifecycle, validation and final device checks.
 
 ## Screenshots
@@ -62,13 +62,14 @@ x86_64 simulator build is not a supported configuration.
 
 ### Release dependency baseline
 
-SwiftChessDemo 1.6.2 uses these coordinated source versions:
+SwiftChessDemo 1.7.0 uses these coordinated source versions:
 
 | Dependency | Version | Resolution |
 | --- | --- | --- |
 | SwiftChessTools | 1.4.0 | Local sibling checkout; required for timeline/navigation APIs |
 | StockfishEmbedded | 1.14.0 | Local sibling checkout and its verified NNUE asset |
 | ArasanEmbedded | 1.5.0 | Published remote revision recorded in Package.resolved |
+| MaiaEmbedded | 1.0.0 | Published remote revision recorded in Package.resolved; app-owned model |
 
 These engines embed Stockfish upstream `effdc3fd` with
 `nn-c9e480e92425.nnue` and Arasan upstream `5d6be86c` with
@@ -82,7 +83,7 @@ sibling source versions.
 Public checkout layout:
 
 SwiftChessDemo expects `SwiftChessTools` and `StockfishEmbedded` to be sibling
-Swift package checkouts. It resolves `ArasanEmbedded` from GitHub through Swift
+Swift package checkouts. It resolves `ArasanEmbedded` and `MaiaEmbedded` from GitHub through Swift
 Package Manager. The parent folder can be any local directory; it does not need
 to be a Git repo.
 
@@ -111,6 +112,7 @@ one-command developer setup step:
 
 ```
 (cd StockfishEmbedded && Scripts/download-nnue.sh)
+(cd SwiftChessDemo && Scripts/download-maia-model.sh)
 ```
 
 The script chooses and verifies the network required by the vendored Stockfish

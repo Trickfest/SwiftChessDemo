@@ -35,6 +35,10 @@ playground.xcworkspace
 
 .build/
 
+# Caller-provisioned Maia weights
+/Resources/Models/*.onnx
+/Resources/Models/.download.*
+
 # CocoaPods
 #
 # We recommend against adding the Pods directory to your .gitignore. However

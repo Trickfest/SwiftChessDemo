@@ -1,15 +1,13 @@
 # Maia integration
 
-This development branch adds Maia as a third engine through the private sibling
-MaiaEmbedded package. Existing SCT/Stockfish sibling paths and the published
-remote Arasan dependency remain. No release/version bump or visibility change
-is included. Access to MaiaEmbedded is required to build this branch; public
-main/release users retain their original dependency baseline.
+SwiftChessDemo 1.7 adds Maia as a third engine through public MaiaEmbedded 1.0.
+Existing SCT/Stockfish sibling paths and the published remote Arasan dependency
+remain. SwiftPM resolves MaiaEmbedded/MaiaUCI from their public release.
 
 ## Setup and source organization
 
-Run `../MaiaEmbedded/Scripts/download-model.sh` from that repository. The project
-copies its pinned, ignored maia3-79m.onnx into the app bundle. MaiaMoveProvider
+Run `Scripts/download-maia-model.sh` from the Demo repository. The project
+copies its pinned, ignored `Resources/Models/maia3-79m.onnx` into the app bundle. MaiaMoveProvider
 adapts MaiaUCI to EmbeddedEngineProviderSession, following the other provider
 facades. MaiaSettings owns app controls; no app policy moves into the package.
 The shared coordinator awaits Maia's asynchronous native cleanup before starting
@@ -62,7 +60,7 @@ This runs app-hosted unit/integration tests and the generic unsigned iOS Release
 build, including exact Stockfish/Maia bundle checks. It does not run UI tests.
 The normal `Scripts/validate.sh` retains the original complete UI gate for an
 explicitly attended run. Hosted workflows remain optional/manual; this branch's
-private sibling dependency must be made available to any external builder.
+verified model must be provisioned explicitly by external builders.
 
 Tests cover Maia legal/promotion/terminal recovery, ratings/history propagation,
 completed-game settings changes and their use by Play Again,
@@ -72,7 +70,7 @@ color assignment. Existing Stockfish and Arasan unit/integration cases still run
 Exact engine moves or strength are not asserted.
 
 The package's native Mac and iPhone/iPad simulator reports are maintained in
-[MaiaEmbedded Testing](../../MaiaEmbedded/Docs/Testing.md). Physical iPhone API/UCI
+[MaiaEmbedded Testing](https://github.com/Trickfest/MaiaEmbedded/blob/main/Docs/Testing.md). Physical iPhone API/UCI
 checks and the short benchmark passed. The user reported normal scrolling/no
 unusual warmth and working gameplay, settings, engine switching and
 background/reset. After the bar-layout correction was installed, the user
@@ -91,11 +89,24 @@ This final guard change was checked locally; the physical reports above describe
 the preceding device-tested build. Native inference and engine ownership did not
 change.
 
-No unattended UI test, release or App Store publication is required here.
+The reports above describe the original integration. Release packaging validation
+and any new final-device checks are recorded separately; unattended UI automation
+and App Store publication are outside this source-release gate.
+
+## Source-release packaging
+
+The 1.7.0 candidate resolves public MaiaEmbedded 1.0.0 at
+`b5a84186513a962312f2f6bf0a03ab7d3c5c22ea`; existing local SwiftChessTools and
+Stockfish dependencies remain. The full 106-test non-UI gate and unsigned iOS
+Release/asset checks passed with that final dependency graph. A separate public
+checkout layout, without a Maia sibling or personal signing, also built Release.
+The signed device Release build is ready. All three app bundles report 1.7.0 and
+contain the pinned model size/SHA-256. Final release-configuration device checks
+are pending; the earlier physical feedback above is historical integration evidence.
 
 ## Notices
 
-Original Demo source remains MIT. This branch additionally links AGPL-3.0-only
+Original Demo source remains MIT. The app additionally links AGPL-3.0-only
 Maia code/model; see THIRD_PARTY.md and LICENSES/AGPL-3.0.txt, plus the package's
 pinned provenance and retained upstream notices. Downloaded weights, build
 products, personal signing data and device IDs must remain untracked.

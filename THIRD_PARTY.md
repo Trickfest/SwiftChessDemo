@@ -2,7 +2,7 @@
 
 This repo no longer vendors chess dependencies directly. It expects
 `SwiftChessTools` and `StockfishEmbedded` to be sibling checkouts next to
-`SwiftChessDemo`, and it resolves `ArasanEmbedded` through Swift Package
+`SwiftChessDemo`, and it resolves `ArasanEmbedded` and `MaiaEmbedded` through Swift Package
 Manager. The parent folder can be any local directory; it does not need to be a
 Git repo.
 
@@ -46,20 +46,21 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
 Update by committing changes in the sibling dependency repo, then rebuild this
 app. Do not reintroduce vendored subtree copies here.
 
-## Maia integration development branch
+## MaiaEmbedded
 
-This branch additionally expects the private `../MaiaEmbedded` checkout. It is
-not part of the public 1.6.2 dependency baseline described above.
-
+- Upstream: https://github.com/Trickfest/MaiaEmbedded
+- Minimum release: `1.0.0`; the resolved public commit is recorded in Package.resolved.
 - Products: MaiaEmbedded and MaiaUCI, using Maia-3 79M FP32 through official ONNX Runtime 1.24.2.
 - Package/model license: AGPL-3.0-only; retained copy in LICENSES/AGPL-3.0.txt.
-- Original source/checkpoint/export identities and upstream notices:
-  ../MaiaEmbedded/Docs/Provenance.md and ../MaiaEmbedded/THIRD_PARTY_NOTICES.md.
+- Original source/checkpoint/export identities and retained notices:
+  https://github.com/Trickfest/MaiaEmbedded/blob/main/Docs/Provenance.md and
+  https://github.com/Trickfest/MaiaEmbedded/blob/main/THIRD_PARTY_NOTICES.md.
 - ONNX Runtime uses MIT licensing; SwiftChessTools remains MIT. Preserve their notices.
-- The downloaded model is copied from ../MaiaEmbedded/Resources/Models into the
-  app bundle and remains ignored in both source repositories.
+- `Scripts/download-maia-model.sh` provisions the pinned export into ignored
+  `Resources/Models`; the app bundles it. No MaiaEmbedded sibling checkout or
+  model in the source archive is needed. See Resources/Models/README.md.
 
-Original Demo source remains MIT. Any distribution of this combined branch's
-app must account for the linked AGPL Maia package/model as well as Stockfish's
-GPL license. No binary, release, public Maia source or App Store submission is
-being published as part of this integration.
+Original Demo source remains MIT. Distribution of the combined app must account
+for the linked AGPL Maia package/model and Stockfish's GPL license, preserving
+licenses, notices and the applicable corresponding source. Repository releases
+contain source only; consumers build and provision the documented dependencies.

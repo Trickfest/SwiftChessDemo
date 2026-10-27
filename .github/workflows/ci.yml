@@ -36,6 +36,9 @@ jobs:
       - name: Download Stockfish NNUE weights
         run: StockfishEmbedded/Scripts/download-nnue.sh
 
+      - name: Download Maia model
+        run: SwiftChessDemo/Scripts/download-maia-model.sh
+
       - name: Run hosted headless checks
         working-directory: SwiftChessDemo
         run: Scripts/github-ci.sh
