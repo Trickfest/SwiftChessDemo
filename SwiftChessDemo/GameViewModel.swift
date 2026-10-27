@@ -164,6 +164,10 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var engineMoveTime: EngineMoveTime
     /// Embedded engine used for future live replies and suggestion analysis.
     @Published private(set) var selectedEngineKind: DemoEngineKind
+    /// Settings captured in each Maia request, relative to the side to move.
+    @Published private(set) var maiaSettings = MaiaSettings()
+    /// Original human-move probabilities, never searched evaluation scores.
+    @Published private(set) var maiaLikelihoods: [String: Double] = [:]
     /// Authoritative live status, never the historical board's status.
     @Published private(set) var gameStatus: GameStatus
     /// Authoritative live side to move.
@@ -232,6 +236,14 @@ final class GameViewModel: ObservableObject {
     private let scenarioReplayDelaySeconds: TimeInterval
     /// Factory for the Stockfish-backed move and analysis provider.
     private let stockfishProviderFactory: EngineProviderFactory
+    /// Factory for Maia's human-move probability and selection provider.
+    private let maiaProviderFactory: EngineProviderFactory
+    /// Maia likelihoods are tied to the authoritative live position.
+    private var maiaLikelihoodsFEN: String?
+    private lazy var maiaProvider: any DemoEngineProvider =
+        maiaProviderFactory { [weak self] event in
+            self?.receiveEngineProviderEvent(event)
+        }
     /// Factory for the Arasan-backed move and analysis provider.
     private let arasanProviderFactory: EngineProviderFactory
     /// Stockfish-backed move and analysis provider for normal gameplay.
@@ -254,6 +266,11 @@ final class GameViewModel: ObservableObject {
     private var activeOpponentSearchRequest: EngineSearchRequest?
     /// Identity of the live analysis request; retained while browsing history.
     private var activeAnalysisSearchRequest: EngineSearchRequest?
+    /// Stockfish supplies display-only scores for games involving Maia. The
+    /// completion action resumes analysis or playback, never applies its move.
+    private enum MaiaEvaluationContinuation { case analysis, demoMove }
+    private var maiaEvaluationRequest: EngineSearchRequest?
+    private var maiaEvaluationContinuation: MaiaEvaluationContinuation?
     /// Seeded generator used by deterministic engine-vs-engine stress mode.
     private var engineDemoRandomGenerator: SeededRandomGenerator
 
@@ -268,6 +285,7 @@ final class GameViewModel: ObservableObject {
         scenarioReplayDelaySeconds: TimeInterval? = nil,
         stockfishProviderFactory: @escaping EngineProviderFactory = { StockfishMoveProvider(eventHandler: $0) },
         arasanProviderFactory: @escaping EngineProviderFactory = { ArasanMoveProvider(eventHandler: $0) },
+        maiaProviderFactory: @escaping EngineProviderFactory = { MaiaMoveProvider(eventHandler: $0) },
         initialTimeline: GameTimeline? = nil
     ) {
         // Capture user configuration so the view model can enforce turn order.
@@ -297,6 +315,7 @@ final class GameViewModel: ObservableObject {
         )
         self.stockfishProviderFactory = stockfishProviderFactory
         self.arasanProviderFactory = arasanProviderFactory
+        self.maiaProviderFactory = maiaProviderFactory
         // Keep the selected ChessUI artwork available for menus and board updates.
         self.pieceSet = pieceSet
         // Keep the selected ChessUI board theme available for menus and board updates.
@@ -488,6 +507,8 @@ final class GameViewModel: ObservableObject {
             return stockfishProvider
         case .arasan:
             return arasanProvider
+        case .maia:
+            return maiaProvider
         }
     }
 
@@ -583,6 +604,7 @@ final class GameViewModel: ObservableObject {
         activeOpponentSearchRequest != nil
             || pendingEngineMoveWorkItem != nil
             || engineDemoPacingWorkItem != nil
+            || maiaEvaluationRequest != nil
     }
 
     /// Test-only controls are opt-in through the UI test launch environment.
@@ -642,6 +664,9 @@ final class GameViewModel: ObservableObject {
         guard showsEvaluationBar != self.showsEvaluationBar else { return }
 
         self.showsEvaluationBar = showsEvaluationBar
+        if !showsEvaluationBar, maiaEvaluationRequest != nil {
+            finishMaiaEvaluation(resumeWork: true)
+        }
         if showsEvaluationBar {
             refreshCurrentAnalysis(force: false)
         } else if selectedEngineProvider.activePurpose == .evaluation {
@@ -654,9 +679,11 @@ final class GameViewModel: ObservableObject {
         guard engineKind != selectedEngineKind else { return }
         guard canSwitchEngine else { return }
 
+        finishMaiaEvaluation(resumeWork: false)
         selectedEngineProvider.stop()
         activeAnalysisSearchRequest = nil
         selectedEngineKind = engineKind
+        maiaLikelihoods.removeAll()
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
         boardModel.clearArrows()
@@ -667,6 +694,25 @@ final class GameViewModel: ObservableObject {
         } else {
             refreshCurrentAnalysis(force: true)
         }
+    }
+
+    var canEditMaiaSettings: Bool {
+        isEngineDemoMode ? (canStepEngineDemo || canRestartEngineDemo) : canSwitchEngine
+    }
+
+    func setMaiaSettings(_ settings: MaiaSettings) {
+        guard canEditMaiaSettings, settings != maiaSettings,
+              (600...2600).contains(settings.selfRating), (600...2600).contains(settings.opponentRating),
+              settings.temperature.isFinite, (0...5).contains(settings.temperature),
+              settings.topP.isFinite, settings.topP > 0, settings.topP <= 1 else { return }
+        if selectedEngineKind == .maia {
+            finishMaiaEvaluation(resumeWork: false)
+            maiaProvider.stop()
+            activeAnalysisSearchRequest = nil
+        }
+        maiaSettings = settings
+        maiaLikelihoods.removeAll()
+        if selectedEngineKind == .maia { refreshCurrentAnalysis(force: true) }
     }
 
     /// Updates the engine move time used for future searches.
@@ -699,6 +745,11 @@ final class GameViewModel: ObservableObject {
         guard clampedCount != suggestionArrowCount else { return }
 
         suggestionArrowCount = clampedCount
+        if selectedEngineKind == .maia {
+            cancelAnalysisSearch(clearSuggestions: true, queueReplacement: nil)
+            refreshCurrentAnalysis(force: true)
+            return
+        }
         if clampedCount == 0 {
             if selectedEngineProvider.activePurpose?.isAnalysis == true {
                 cancelAnalysisSearch(
@@ -760,7 +811,7 @@ final class GameViewModel: ObservableObject {
             return
         }
 
-        if activeOpponentSearchRequest != nil || pendingEngineMoveWorkItem != nil {
+        if activeOpponentSearchRequest != nil || pendingEngineMoveWorkItem != nil || maiaEvaluationRequest != nil {
             engineDemoRunState = .pausingAfterCurrentMove
         } else {
             engineDemoRunState = .paused
@@ -935,6 +986,7 @@ final class GameViewModel: ObservableObject {
         // Ignore illegal gestures, and ignore moves when it's not the user's turn.
         guard isLegal else { return }
         guard liveGame.position.state.turn == playerColor else { return }
+        finishMaiaEvaluation(resumeWork: false)
         // A real user move invalidates analysis arrows for the previous position.
         cancelAnalysisSearch(clearSuggestions: true, queueReplacement: nil)
         // Apply the move in ChessCore and refresh the board UI.
@@ -1192,11 +1244,21 @@ final class GameViewModel: ObservableObject {
 
     /// Handles typed output from the selected engine provider.
     private func receiveEngineProviderEvent(_ event: EngineProviderEvent) {
+        if receiveMaiaEvaluationEvent(event) { return }
         switch event {
         case .output(let output, let request):
             guard shouldAcceptEngineEvent(for: request) else { return }
 
             if case .info(let info) = output {
+                if request.engineKind == .maia, request.purpose == .suggestions,
+                   let text = info.string {
+                    let fields = text.split(separator: " ")
+                    if fields.count == 5, fields[0] == "Maia", fields[1] == "policy", fields[3] == "probability",
+                       let probability = Double(fields[4]), probability.isFinite, (0...1).contains(probability) {
+                        maiaLikelihoodsFEN = request.fen
+                        maiaLikelihoods[String(fields[2])] = probability
+                    }
+                }
                 recordEvaluation(info, request: request)
             }
 
@@ -1226,7 +1288,9 @@ final class GameViewModel: ObservableObject {
     /// Save the primary exact score at the searched ply. A score for an
     /// alternative MultiPV line or a search bound is not a position estimate.
     private func recordEvaluation(_ info: UCIInfoLine, request: EngineSearchRequest) {
-        guard request.positionPly == liveMoveCount, request.fen == livePositionFEN,
+        guard request.engineKind != .maia,
+              !usesStockfishEvaluationForMaia || request.engineKind == .stockfish,
+              request.positionPly == liveMoveCount, request.fen == livePositionFEN,
               (info.multipv ?? 1) == 1, info.scoreBound == .exact,
               let score = info.whiteRelativeScore(sideToMove: request.sideToMove)
         else { return }
@@ -1273,7 +1337,9 @@ final class GameViewModel: ObservableObject {
     ) {
         switch output {
         case .info(let info):
-            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
+            if request.engineKind != .maia,
+               (!usesStockfishEvaluationForMaia || request.engineKind == .stockfish),
+               let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
                 evaluation = chessEvaluation(from: score)
                 evaluationEngineKind = request.engineKind
             }
@@ -1302,7 +1368,9 @@ final class GameViewModel: ObservableObject {
     ) {
         switch output {
         case .info(let info):
-            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
+            if request.engineKind != .maia,
+               (!usesStockfishEvaluationForMaia || request.engineKind == .stockfish),
+               let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
                 evaluation = chessEvaluation(from: score)
                 evaluationEngineKind = request.engineKind
             }
@@ -1322,7 +1390,9 @@ final class GameViewModel: ObservableObject {
     ) {
         switch output {
         case .info(let info):
-            if let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
+            if request.engineKind != .maia,
+               (!usesStockfishEvaluationForMaia || request.engineKind == .stockfish),
+               let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
                 evaluation = chessEvaluation(from: score)
                 evaluationEngineKind = request.engineKind
             }
@@ -1373,7 +1443,11 @@ final class GameViewModel: ObservableObject {
 
         if isEngineDemoMode {
             setEngineActivity(statusNotice.map(EngineActivityState.notice) ?? .idle)
-            handleEngineDemoMoveApplied()
+            if usesStockfishEvaluationForMaia, showsEvaluationBar {
+                startMaiaEvaluation(then: .demoMove)
+            } else {
+                handleEngineDemoMoveApplied()
+            }
             return
         }
 
@@ -1549,6 +1623,7 @@ final class GameViewModel: ObservableObject {
 
     /// Cancels any running engine search without assuming it was active.
     private func stopEngineIfNeeded() {
+        finishMaiaEvaluation(resumeWork: false)
         activeAnalysisSearchRequest = nil
         suggestedMovesByRank.removeAll()
         suggestedMovesPositionFEN = nil
@@ -1567,6 +1642,8 @@ final class GameViewModel: ObservableObject {
         moveProvider?.cancel()
         stockfishProvider.stop()
         arasanProvider.stop()
+        maiaProvider.stop()
+        maiaLikelihoods.removeAll()
     }
 
     /// Restores the board and derived game state while preserving user-selected demo preferences.
@@ -1649,6 +1726,102 @@ final class GameViewModel: ObservableObject {
         activeAlert = .result(GameResult(title: title, message: message))
     }
 
+    /// Visibility depends on the user's preference, not the current move engine.
+    /// Keeping the bar's geometry stable prevents the board shifting each ply.
+    var displaysEvaluationBar: Bool { showsEvaluationBar }
+
+    var evaluationAccessibilityDescription: String {
+        if isBrowsingHistory { return recordedEvaluationDescription }
+        if maiaEvaluationRequest != nil { return "Updating Stockfish evaluation" }
+        return evaluationEngineKind.map { "\($0.displayName) evaluation" } ?? "Not evaluated"
+    }
+
+    private var usesStockfishEvaluationForMaia: Bool {
+        guard moveProvider == nil else { return false }
+        if !isEngineDemoMode { return selectedEngineKind == .maia }
+        return engineDemoConfiguration.white.engineKind == .maia
+            || engineDemoConfiguration.black.engineKind == .maia
+            || engineDemoLastMoveConfiguration?.engineKind == .maia
+            || (engineDemoConfiguration.stress.isEnabled && engineDemoConfiguration.stress.randomizesEngineEachMove)
+    }
+
+    private var hasCurrentStockfishEvaluation: Bool {
+        guard let score = recordedEvaluations[liveMoveCount] else { return false }
+        return score.engineKind == .stockfish && score.fen == livePositionFEN
+    }
+
+    /// Evaluate the resulting position after a move, or before Maia's player-turn
+    /// suggestions. Suspend other engines first so native stream ownership and
+    /// large model lifetimes stay serialized through the shared coordinator.
+    private func startMaiaEvaluation(then continuation: MaiaEvaluationContinuation) {
+        if let active = maiaEvaluationRequest, active.fen == livePositionFEN {
+            maiaEvaluationContinuation = continuation
+            return
+        }
+        finishMaiaEvaluation(resumeWork: false)
+        activeAnalysisSearchRequest = nil
+        if selectedEngineKind != .stockfish { selectedEngineProvider.suspend() }
+        let request = engineSearchRequest(purpose: .evaluation, engineKind: .stockfish, moveTime: .quarterSecond)
+        maiaEvaluationContinuation = continuation
+        maiaEvaluationRequest = request
+        stockfishProvider.startOrQueueSearch(request)
+    }
+
+    /// A bestmove here is only an end-of-evaluation marker. It never chooses or
+    /// applies a game move. Exact request/FEN/ply guards reject old-position data.
+    private func receiveMaiaEvaluationEvent(_ event: EngineProviderEvent) -> Bool {
+        let request: EngineSearchRequest
+        switch event {
+        case .output(_, let value), .timeout(let value), .timeoutWithoutBestMove(let value), .failure(_, let value):
+            request = value
+        }
+        guard request == maiaEvaluationRequest else { return false }
+        guard request.fen == livePositionFEN, request.positionPly == liveMoveCount, isGameOngoing else {
+            finishMaiaEvaluation(resumeWork: false)
+            return true
+        }
+        switch event {
+        case .output(.info(let info), _):
+            recordEvaluation(info, request: request)
+            if (info.multipv ?? 1) == 1, info.scoreBound == .exact,
+               let score = info.whiteRelativeScore(sideToMove: request.sideToMove) {
+                evaluation = chessEvaluation(from: score)
+                evaluationEngineKind = .stockfish
+            }
+        case .output(.bestMove, _):
+            finishMaiaEvaluation(resumeWork: true)
+        case .failure, .timeoutWithoutBestMove:
+            setEngineActivity(.notice("Evaluation unavailable."))
+            finishMaiaEvaluation(resumeWork: true)
+        case .timeout:
+            // The provider sends stop and owns its bounded bestmove grace period.
+            break
+        case .output:
+            break
+        }
+        return true
+    }
+
+    private func finishMaiaEvaluation(resumeWork: Bool) {
+        guard maiaEvaluationRequest != nil else { return }
+        let continuation = maiaEvaluationContinuation
+        maiaEvaluationRequest = nil
+        maiaEvaluationContinuation = nil
+        stockfishProvider.suspend()
+        guard resumeWork, isGameOngoing else { return }
+        switch continuation {
+        case .demoMove:
+            handleEngineDemoMoveApplied()
+        case .analysis:
+            if selectedEngineKind == .maia, !isEngineDemoMode,
+               liveGame.position.state.turn == playerColor, suggestionArrowCount > 0 {
+                refreshSuggestionAnalysis(force: true)
+            }
+        case nil:
+            break
+        }
+    }
+
     /// Starts or refreshes selected-engine analysis for the current player-turn position.
     private func refreshCurrentAnalysis(force: Bool) {
         guard isGameOngoing else {
@@ -1657,6 +1830,9 @@ final class GameViewModel: ObservableObject {
         }
         guard !isEngineDemoMode else {
             boardModel.clearArrows()
+            if usesStockfishEvaluationForMaia, showsEvaluationBar, !hasActiveEngineDemoWork {
+                startMaiaEvaluation(then: .demoMove)
+            }
             return
         }
 
@@ -1667,6 +1843,17 @@ final class GameViewModel: ObservableObject {
 
         guard selectedEngineProvider.activePurpose != .opponentMove else { return }
 
+        if selectedEngineKind == .maia {
+            if showsEvaluationBar, !hasCurrentStockfishEvaluation {
+                startMaiaEvaluation(then: .analysis)
+            } else if suggestionArrowCount > 0 {
+                refreshSuggestionAnalysis(force: force)
+            } else {
+                boardModel.clearArrows()
+            }
+            return
+        }
+
         if suggestionArrowCount > 0 {
             refreshSuggestionAnalysis(force: force)
             return
@@ -1674,7 +1861,7 @@ final class GameViewModel: ObservableObject {
 
         boardModel.clearArrows()
 
-        guard showsEvaluationBar, moveProvider == nil else {
+        guard showsEvaluationBar, moveProvider == nil, selectedEngineKind != .maia else {
             if selectedEngineProvider.activePurpose == .evaluation {
                 cancelAnalysisSearch(clearSuggestions: false, queueReplacement: nil)
             }
@@ -1743,6 +1930,7 @@ final class GameViewModel: ObservableObject {
     /// Starts one engine search after clearing stale suggestion state.
     private func startEngineSearch(_ request: EngineSearchRequest) {
         activeAnalysisSearchRequest = request
+        if request.engineKind == .maia { maiaLikelihoods.removeAll() }
         if request.purpose == .suggestions {
             suggestedMovesByRank.removeAll()
             suggestedMovesPositionFEN = nil
@@ -1759,15 +1947,19 @@ final class GameViewModel: ObservableObject {
         moveTime: EngineMoveTime? = nil
     ) -> EngineSearchRequest {
         let resolvedMoveTime = moveTime ?? engineMoveTime
+        let resolvedEngineKind = engineKind ?? selectedEngineKind
         return EngineSearchRequest(
-            engineKind: engineKind ?? selectedEngineKind,
+            engineKind: resolvedEngineKind,
             purpose: purpose,
             fen: livePositionFEN,
             sideToMove: liveGame.position.state.turn,
             moveTimeMilliseconds: resolvedMoveTime.rawValue,
             multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1,
             safetyTimeoutSeconds: nil,
-            positionPly: liveMoveCount
+            positionPly: liveMoveCount,
+            maiaSettings: maiaSettings,
+            initialFEN: resolvedEngineKind == .maia ? fenSerializer.fen(from: initialPosition) : nil,
+            moves: resolvedEngineKind == .maia ? timeline.moves.map { $0.description } : []
         )
     }
 
@@ -1928,6 +2120,7 @@ final class GameViewModel: ObservableObject {
 
     /// Refreshes published state derived from the backing ChessCore game.
     private func refreshGameSnapshot(animatedMove: Move? = nil) {
+        if maiaLikelihoodsFEN != livePositionFEN { maiaLikelihoods.removeAll(); maiaLikelihoodsFEN = nil }
         gameStatus = liveGame.status
         sideToMove = liveGame.position.state.turn
         if !isBrowsingHistory {

@@ -18,6 +18,27 @@ Releases are source-only. This repository does not publish a prebuilt app,
 framework, library, or other binary artifact; users build the sibling source
 checkouts and Swift package dependency locally.
 
+## Maia development branch
+
+This `branch/maia-integration` checkout adds Maia as a third engine. It requires
+an authorized **private** `../MaiaEmbedded` sibling checkout in addition to the
+public dependencies below. Provision its model with:
+
+```sh
+(cd ../MaiaEmbedded && Scripts/download-model.sh)
+```
+
+The project bundles that ignored 316 MB model and links MaiaEmbedded/MaiaUCI.
+Maia settings expose side-to-move/opponent Lichess ratings, temperature, TopP
+and optional recorded history. Suggestions show human-move likelihoods. The
+evaluation bar stays in place while Stockfish supplies independent scores;
+Maia still chooses its moves and suggestions. No Maia compatibility score is
+recorded as engine evaluation. Move-time controls do not change Maia strength.
+
+Both human colors and Maia versus Stockfish/Arasan are supported. This development
+branch is separate from the public release baseline below; it has no new release.
+See [Maia integration](Docs/MAIA.md) for lifecycle, validation and final device checks.
+
 ## Screenshots
 
 The demo is designed to show the same app-owned chess experience adapting

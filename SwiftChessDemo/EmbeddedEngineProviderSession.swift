@@ -11,14 +11,19 @@
 import ChessUCI
 import Foundation
 
-/// Narrow transport surface shared by the two embedded engine wrappers.
+/// Narrow transport surface shared by the embedded engine wrappers.
 protocol EmbeddedEngineTransport: AnyObject, Sendable {
     nonisolated func sendCommand(_ command: String)
     nonisolated func stop()
+    nonisolated func shutdown() async
 }
 
-/// Optional transport capability for temporarily releasing process-wide
-/// stream ownership without discarding expensive engine state.
+/// Blocking wrappers use their existing stop operation as the cleanup barrier.
+extension EmbeddedEngineTransport {
+    nonisolated func shutdown() async { stop() }
+}
+
+/// Optional release of process-wide streams while preserving engine state.
 protocol EmbeddedEngineSuspendableTransport: EmbeddedEngineTransport {
     nonisolated func suspend()
     nonisolated func resume()
@@ -52,7 +57,7 @@ final class EmbeddedEngineLifecycleCoordinator: @unchecked Sendable {
 
     func enqueueTeardown(of transport: any EmbeddedEngineTransport) {
         enqueueLifecycleOperation {
-            transport.stop()
+            await transport.shutdown()
         }
     }
 
@@ -62,12 +67,12 @@ final class EmbeddedEngineLifecycleCoordinator: @unchecked Sendable {
         }
     }
 
-    private func enqueueLifecycleOperation(_ operation: @escaping @Sendable () -> Void) {
+    private func enqueueLifecycleOperation(_ operation: @escaping @Sendable () async -> Void) {
         lock.lock()
         let previousTeardown = teardownTail
         let teardown = Task.detached(priority: .utility) {
             await previousTeardown?.value
-            operation()
+            await operation()
         }
         teardownTail = teardown
         lock.unlock()
@@ -84,7 +89,7 @@ final class EmbeddedEngineLifecycleCoordinator: @unchecked Sendable {
     }
 }
 
-/// Shared UCI lifecycle used by the Stockfish and Arasan provider facades.
+/// Shared UCI lifecycle used by the embedded engine provider facades.
 ///
 /// The concrete wrappers only differ in construction and which startup commands
 /// they send. Search serialization, handshake ordering, cancellation, timeouts,
@@ -441,6 +446,14 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
         preparationNeedsRestart = false
         startHandshakeTimeout(engineInstanceID: engineInstanceID)
         transport.sendCommand(UCICommand.setOption(name: "MultiPV", value: request.multiPVCount).string)
+        if request.engineKind == .maia {
+            let settings = request.maiaSettings
+            transport.sendCommand("setoption name SelfElo value \(settings.selfRating)")
+            transport.sendCommand("setoption name OppoElo value \(settings.opponentRating)")
+            transport.sendCommand("setoption name Temperature value \(settings.temperature)")
+            transport.sendCommand("setoption name TopP value \(settings.topP)")
+            transport.sendCommand("setoption name UseHistory value \(settings.useHistory)")
+        }
         transport.sendCommand(UCICommand.newGame.string)
         transport.sendCommand(UCICommand.isReady.string)
     }
@@ -454,7 +467,12 @@ final class EmbeddedEngineProviderSession: DemoEngineProvider {
         handshakeTimeoutTask?.cancel()
         handshakeTimeoutTask = nil
         state = .searching
-        transport.sendCommand(UCICommand.position(.fen(request.fen)).string)
+        if request.engineKind == .maia, let initialFEN = request.initialFEN {
+            let moves = request.moves.isEmpty ? "" : " moves " + request.moves.joined(separator: " ")
+            transport.sendCommand("position fen " + initialFEN + moves)
+        } else {
+            transport.sendCommand(UCICommand.position(.fen(request.fen)).string)
+        }
         transport.sendCommand(UCICommand.go(.moveTime(milliseconds: request.moveTimeMilliseconds)).string)
         startSearchTimeout(token: searchToken)
     }

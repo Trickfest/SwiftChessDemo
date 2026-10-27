@@ -52,7 +52,7 @@ if [[ "$(grep -c 'PRODUCT_BUNDLE_IDENTIFIER' \
   exit 1
 fi
 
-for dependency in ../SwiftChessTools ../StockfishEmbedded; do
+for dependency in ../SwiftChessTools ../StockfishEmbedded ../MaiaEmbedded; do
   if [[ ! -d "$dependency" ]]; then
     printf 'Missing required sibling checkout: %s\n' "$dependency" >&2
     exit 1
@@ -74,6 +74,11 @@ if ! grep -Fq "../StockfishEmbedded/Resources/NNUE/$stockfish_nnue_file" \
   printf 'The Xcode project does not bundle the current Stockfish network: %s\n' \
     "$stockfish_nnue_file" >&2
   exit 1
+fi
+
+maia_model_path="../MaiaEmbedded/Resources/Models/maia3-79m.onnx"
+if [[ ! -f "$maia_model_path" ]]; then
+  printf '%s\n' 'Maia model missing. Run ../MaiaEmbedded/Scripts/download-model.sh.' >&2; exit 1
 fi
 
 printf 'Running app-hosted unit tests without simulator UI tests...\n'
@@ -137,4 +142,7 @@ if [[ ! -f "$bundled_nnue" ]] || ! cmp -s "$stockfish_nnue_path" "$bundled_nnue"
   exit 1
 fi
 
-printf 'SwiftChessDemo hosted headless checks succeeded.\n'
+if ! cmp -s "$maia_model_path" "$app_bundle/maia3-79m.onnx"; then
+  printf '%s\n' 'Release app is missing the exact provisioned Maia model.' >&2; exit 1
+fi
+printf 'SwiftChessDemo headless checks succeeded.\n'

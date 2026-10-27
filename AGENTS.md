@@ -131,3 +131,18 @@ source dependencies locally.
 - Use short, imperative commit summaries (e.g., "Document NNUE download steps", "Migrate to SwiftChessTools").
 - PRs should describe behavior changes and list manual verification steps; include screenshots/GIFs for UI changes.
 - Dependency changes must also update `THIRD_PARTY.md`.
+
+## Maia integration branch
+
+`branch/maia-integration` additionally uses private sibling `../MaiaEmbedded`
+products MaiaEmbedded/MaiaUCI and bundles its ignored provisioned 79M model.
+The user authorized this branch explicitly. Keep MaiaEmbedded private, preserve
+existing dependencies and do not publish a release. See Docs/MAIA.md.
+
+For this implementation, the user requested avoiding unattended UI tests and
+postponing physical-device access to the final stage. Use Scripts/validate.sh
+--headless for non-UI unit/integration and unsigned Release checks; report UI
+and physical checks separately. Do not represent skipped UI checks as passed.
+Stockfish/Arasan still require serialized process-stream ownership. Maia has
+instance-owned state but its asynchronous cleanup must finish before replacement
+loads to avoid unnecessary mobile memory overlap.

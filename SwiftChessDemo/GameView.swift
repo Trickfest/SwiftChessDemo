@@ -164,7 +164,7 @@ struct GameView: View {
 
     /// Browsing displays the selected position's recorded score, if available.
     private var displaysEvaluationBar: Bool {
-        viewModel.showsEvaluationBar
+        viewModel.displaysEvaluationBar
     }
 
     private var moveNavigation: some View {
@@ -341,7 +341,7 @@ struct GameView: View {
             whiteSide: viewModel.playerColor == .white ? .bottom : .top
         )
         .accessibilityLabel(viewModel.isBrowsingHistory ? "Recorded evaluation" : "Evaluation")
-        .accessibilityHint(viewModel.isBrowsingHistory ? viewModel.recordedEvaluationDescription : "")
+        .accessibilityHint(viewModel.evaluationAccessibilityDescription)
     }
 
     private var horizontalEvaluationBar: some View {
@@ -351,7 +351,7 @@ struct GameView: View {
             whiteSide: .leading
         )
         .accessibilityLabel(viewModel.isBrowsingHistory ? "Recorded evaluation" : "Evaluation")
-        .accessibilityHint(viewModel.isBrowsingHistory ? viewModel.recordedEvaluationDescription : "")
+        .accessibilityHint(viewModel.evaluationAccessibilityDescription)
     }
 
     private var boardAccessibilityValue: String {
@@ -421,6 +421,15 @@ struct GameView: View {
 
     private var displayOptionsSection: some View {
         panelSection("Preferences") {
+            if viewModel.selectedEngineKind == .maia || viewModel.isEngineDemoMode {
+                MaiaSettingsView(viewModel: viewModel)
+                if !viewModel.maiaLikelihoods.isEmpty {
+                    Text(viewModel.maiaLikelihoods.sorted { $0.value > $1.value }.map {
+                        "\($0.key): \(Int(($0.value * 100).rounded()))%"
+                    }.joined(separator: " · "))
+                    .font(.caption).accessibilityIdentifier("Game.maiaLikelihoods")
+                }
+            }
             if horizontalSizeClass == .regular {
                 VStack(spacing: 10) {
                     pieceSetControl

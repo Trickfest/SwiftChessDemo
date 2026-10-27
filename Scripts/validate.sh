@@ -6,10 +6,18 @@ SIMULATOR_DESTINATION="${SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION:-platform=iOS Si
 TEST_DERIVED_DATA="${SWIFT_CHESS_DEMO_TEST_DERIVED_DATA:-.build/xcode-swiftchessdemo}"
 SOURCE_PACKAGES_DIR="${SWIFT_CHESS_DEMO_SOURCE_PACKAGES_DIR:-$TEST_DERIVED_DATA/SourcePackages}"
 
+if [[ "${1:-}" != "" && "${1:-}" != "--headless" ]]; then
+  printf 'Usage: Scripts/validate.sh [--headless]\n' >&2; exit 2
+fi
 cd "$ROOT_DIR"
 
 # Keep the hosted unit-test and Release-build checks in the local gate too.
 "$ROOT_DIR/Scripts/github-ci.sh"
+
+if [[ "${1:-}" == "--headless" ]]; then
+  printf '%s\n' 'Headless local validation passed. Simulator UI/manual physical checks were not run.'
+  exit 0
+fi
 
 printf 'Running the local-only simulator UI test suite...\n'
 xcodebuild \

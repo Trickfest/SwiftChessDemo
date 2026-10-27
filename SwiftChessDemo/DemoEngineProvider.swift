@@ -19,6 +19,7 @@ typealias DemoEngineEventHandler = @MainActor (EngineProviderEvent) -> Void
 enum DemoEngineKind: String, CaseIterable, Hashable, Identifiable, Sendable {
     case stockfish
     case arasan
+    case maia
 
     var id: String { rawValue }
 
@@ -28,6 +29,8 @@ enum DemoEngineKind: String, CaseIterable, Hashable, Identifiable, Sendable {
             return "Stockfish"
         case .arasan:
             return "Arasan"
+        case .maia:
+            return "Maia"
         }
     }
 }
@@ -107,6 +110,9 @@ struct EngineSearchRequest: Equatable, Sendable {
     let moveTimeMilliseconds: Int
     let multiPVCount: Int
     let safetyTimeoutSeconds: Int
+    let maiaSettings: MaiaSettings
+    let initialFEN: String?
+    let moves: [String]
 
     init(
         engineKind: DemoEngineKind,
@@ -117,9 +123,15 @@ struct EngineSearchRequest: Equatable, Sendable {
         multiPVCount: Int,
         safetyTimeoutSeconds: Int? = nil,
         id: UUID = UUID(),
-        positionPly: Int = 0
+        positionPly: Int = 0,
+        maiaSettings: MaiaSettings = .init(),
+        initialFEN: String? = nil,
+        moves: [String] = []
     ) {
         self.id = id
+        self.maiaSettings = maiaSettings
+        self.initialFEN = initialFEN
+        self.moves = moves
         self.positionPly = positionPly
         self.engineKind = engineKind
         self.purpose = purpose

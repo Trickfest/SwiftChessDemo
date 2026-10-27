@@ -45,3 +45,21 @@ requires GPLv3 compliance. A local copy of GPLv3 is retained at
 
 Update by committing changes in the sibling dependency repo, then rebuild this
 app. Do not reintroduce vendored subtree copies here.
+
+## Maia integration development branch
+
+This branch additionally expects the private `../MaiaEmbedded` checkout. It is
+not part of the public 1.6.2 dependency baseline described above.
+
+- Products: MaiaEmbedded and MaiaUCI, using Maia-3 79M FP32 through official ONNX Runtime 1.24.2.
+- Package/model license: AGPL-3.0-only; retained copy in LICENSES/AGPL-3.0.txt.
+- Original source/checkpoint/export identities and upstream notices:
+  ../MaiaEmbedded/Docs/Provenance.md and ../MaiaEmbedded/THIRD_PARTY_NOTICES.md.
+- ONNX Runtime uses MIT licensing; SwiftChessTools remains MIT. Preserve their notices.
+- The downloaded model is copied from ../MaiaEmbedded/Resources/Models into the
+  app bundle and remains ignored in both source repositories.
+
+Original Demo source remains MIT. Any distribution of this combined branch's
+app must account for the linked AGPL Maia package/model as well as Stockfish's
+GPL license. No binary, release, public Maia source or App Store submission is
+being published as part of this integration.

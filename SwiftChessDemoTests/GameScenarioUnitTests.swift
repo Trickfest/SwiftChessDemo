@@ -34,6 +34,38 @@ final class EmbeddedEngineProviderIntegrationTests: XCTestCase {
         try await assertCommonPositions(engineKind: .arasan)
     }
 
+    func testMaiaReturnsLegalMovesAndRecoversAfterTerminalPositions() async throws {
+        try await assertCommonPositions(engineKind: .maia)
+    }
+
+    func testMaiaAndSearchEnginesPlayBothColorAssignments() async throws {
+        for opponent in [DemoEngineKind.stockfish, .arasan] {
+            for maiaIsWhite in [true, false] {
+                let model = GameViewModel(playerColor: .white, pieceSet: .artDecoMonochrome,
+                    boardTheme: .classicGreen, gameMode: .engineVsEngine,
+                    engineDemoConfiguration: EngineDemoConfiguration(
+                        white: .init(engineKind: maiaIsWhite ? .maia : opponent, moveTime: .quarterSecond),
+                        black: .init(engineKind: maiaIsWhite ? opponent : .maia, moveTime: .quarterSecond),
+                        pacing: .fast), minimumEngineThinkingSeconds: 0)
+                model.startIfNeeded()
+                for ply in 1...4 {
+                    XCTAssertTrue(model.canStepEngineDemo)
+                    model.stepEngineDemo()
+                    for _ in 0..<1500 {
+                        if model.liveMoveCount == ply && model.canStepEngineDemo { break }
+                        try await Task.sleep(for: .milliseconds(10))
+                    }
+                    XCTAssertEqual(model.liveMoveCount, ply, "\(opponent), Maia white=\(maiaIsWhite)")
+                    if model.liveMoveCount != ply { break }
+                    XCTAssertEqual(model.evaluationEngineKind, .stockfish)
+                    XCTAssertTrue(model.displaysEvaluationBar)
+                }
+                model.cleanup()
+                await EmbeddedEngineLifecycleCoordinator.shared.waitForPendingTeardown()
+            }
+        }
+    }
+
     private func assertCommonPositions(engineKind: DemoEngineKind) async throws {
         // Independently authored fixtures shared by both real providers. Check
         // rules and request identity, not engine strength or a preferred move.
@@ -62,6 +94,7 @@ final class EmbeddedEngineProviderIntegrationTests: XCTestCase {
         switch engineKind {
         case .stockfish: provider = StockfishMoveProvider(eventHandler: handler)
         case .arasan: provider = ArasanMoveProvider(eventHandler: handler)
+        case .maia: provider = MaiaMoveProvider(eventHandler: handler)
         }
         defer { provider.stop() }
 
@@ -1548,6 +1581,7 @@ final class GameViewModelEngineDemoTests: XCTestCase {
             )
 
             provider.emitBestMove(move)
+            harness.completeMaiaEvaluation()
         }
 
         XCTAssertEqual(viewModel.moveRecords.count, 10)
@@ -2118,7 +2152,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testReplacingAnalysisDuringReadinessRestartsPreparation() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let transport = RecordingEmbeddedEngineTransport()
             let session = makeSession(
                 engineKind: engineKind,
@@ -2182,7 +2216,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testHandshakeTimeoutFailsRequestAndDiscardsTransport() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let transport = RecordingEmbeddedEngineTransport()
             var events: [EngineProviderEvent] = []
             let session = EmbeddedEngineProviderSession(
@@ -2213,7 +2247,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testStopRejectsLateOutputFromDiscardedTransport() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let transport = RecordingEmbeddedEngineTransport()
             let session = makeSession(
                 engineKind: engineKind,
@@ -2236,7 +2270,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testReplacementStartWaitsForPriorCrossEngineTeardown() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let coordinator = EmbeddedEngineLifecycleCoordinator()
             let priorTransport = BlockingEmbeddedEngineTransport()
             let replacementTransport = RecordingEmbeddedEngineTransport()
@@ -2314,7 +2348,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testSearchTimeoutRequestsStopAndAcceptsLateBestMove() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let transport = RecordingEmbeddedEngineTransport()
             var events: [EngineProviderEvent] = []
             let session = EmbeddedEngineProviderSession(
@@ -2350,7 +2384,7 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
     }
 
     func testSearchTimeoutWithoutBestMoveEscalatesAndDiscardsTransport() async {
-        for engineKind in DemoEngineKind.allCases {
+        for engineKind in DemoEngineKind.allCases where engineKind != .maia {
             let transport = RecordingEmbeddedEngineTransport()
             var events: [EngineProviderEvent] = []
             let session = EmbeddedEngineProviderSession(
@@ -2460,9 +2494,248 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
 }
 
 @MainActor
+final class MaiaViewModelTests: XCTestCase {
+    func testMaiaSettingsCanChangeBetweenCompletedEngineDemoGames() throws {
+        let harness = EngineAnalysisHarness()
+        let completedTimeline = try GameTimeline(
+            moves: ["f2f3", "e7e5", "g2g4", "d8h4"].map(Move.init(string:))
+        )
+        let model = harness.makeViewModel(
+            gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: .init(engineKind: .maia, moveTime: .quarterSecond),
+                black: .init(engineKind: .arasan, moveTime: .quarterSecond),
+                pacing: .fast
+            ),
+            initialTimeline: completedTimeline
+        )
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        let completedFEN = model.livePositionFEN
+        XCTAssertTrue(model.canRestartEngineDemo)
+        XCTAssertFalse(model.canStepEngineDemo)
+        XCTAssertTrue(model.canEditMaiaSettings)
+
+        var settings = MaiaSettings()
+        settings.selfRating = 1200
+        settings.opponentRating = 2000
+        settings.temperature = 0
+        settings.topP = 0.8
+        settings.useHistory = true
+        model.setMaiaSettings(settings)
+
+        XCTAssertEqual(model.maiaSettings, settings)
+        XCTAssertEqual(model.livePositionFEN, completedFEN)
+        XCTAssertTrue(model.canRestartEngineDemo)
+        XCTAssertTrue(harness.maia.requests.isEmpty)
+        XCTAssertTrue(harness.stockfish.requests.isEmpty)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+
+        model.activeAlert = nil
+        model.restartEngineDemoAndPlay()
+        let request = harness.maia.requireLastRequest()
+        XCTAssertEqual(request.purpose, .opponentMove)
+        XCTAssertEqual(request.maiaSettings, settings)
+        XCTAssertEqual(model.liveMoveCount, 0)
+        XCTAssertEqual(model.engineDemoRunState, .playing)
+        XCTAssertFalse(model.canEditMaiaSettings)
+        var changedDuringPlay = settings
+        changedDuringPlay.selfRating = 1500
+        model.setMaiaSettings(changedDuringPlay)
+        XCTAssertEqual(model.maiaSettings, settings)
+    }
+
+    private func mixedGame(_ harness: EngineAnalysisHarness) -> GameViewModel {
+        harness.makeViewModel(gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: .init(engineKind: .maia, moveTime: .quarterSecond),
+                black: .init(engineKind: .arasan, moveTime: .quarterSecond), pacing: .fast))
+    }
+
+    func testStableBarAndStockfishScoresAfterEachMixedEngineMove() throws {
+        let harness = EngineAnalysisHarness()
+        let model = mixedGame(harness)
+        model.startIfNeeded()
+        XCTAssertTrue(model.displaysEvaluationBar)
+        model.stepEngineDemo()
+        harness.maia.emitBestMove("e2e4")
+        XCTAssertEqual(model.liveMoveCount, 1)
+        XCTAssertFalse(model.canStepEngineDemo)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+        let evaluationRequest = harness.stockfish.requireLastRequest()
+        XCTAssertEqual(evaluationRequest.purpose, .evaluation)
+        XCTAssertEqual(evaluationRequest.fen, model.livePositionFEN)
+        XCTAssertEqual(evaluationRequest.positionPly, 1)
+        XCTAssertEqual(evaluationRequest.sideToMove, .black)
+        harness.completeMaiaEvaluation(score: 120)
+        XCTAssertEqual(model.liveMoveCount, 1, "An evaluation bestmove must never be played")
+        XCTAssertEqual(model.evaluation, .centipawns(-120))
+        XCTAssertEqual(model.evaluationEngineKind, .stockfish)
+        XCTAssertTrue(model.canStepEngineDemo)
+        XCTAssertTrue(model.displaysEvaluationBar)
+
+        model.stepEngineDemo()
+        XCTAssertEqual(harness.arasan.requireLastRequest().purpose, .opponentMove)
+        harness.arasan.emitInfo(score: .centipawns(800))
+        XCTAssertEqual(model.evaluation, .centipawns(-120), "Mixed games keep one evaluation source")
+        harness.arasan.emitBestMove("e7e5")
+        XCTAssertTrue(model.displaysEvaluationBar)
+        harness.completeMaiaEvaluation(score: 40)
+        XCTAssertEqual(model.liveMoveCount, 2)
+        XCTAssertEqual(model.evaluation, .centipawns(40))
+        model.selectPosition(atPly: 1)
+        XCTAssertEqual(model.displayedRecordedEvaluation?.engineKind, .stockfish)
+        XCTAssertEqual(model.displayedEvaluation, .centipawns(-120))
+        XCTAssertTrue(model.displaysEvaluationBar)
+        model.cleanup()
+    }
+
+    func testOldEvaluationCannotOverwriteNewPositionOrPlayAMove() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        model.startIfNeeded(); model.setSelectedEngineKind(.maia)
+        let old = harness.stockfish.requireLastRequest()
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        harness.stockfish.emitInfo(score: .centipawns(900), request: old)
+        harness.stockfish.emitBestMove("g1f3", request: old)
+        XCTAssertEqual(model.liveMoveCount, 1)
+        XCTAssertNil(model.evaluationEngineKind)
+        XCTAssertEqual(harness.maia.requireLastRequest().purpose, .opponentMove)
+        harness.maia.emitBestMove("e7e5")
+        harness.stockfish.emitInfo(score: .centipawns(700), request: old)
+        harness.completeMaiaEvaluation(score: 15)
+        XCTAssertEqual(model.liveMoveCount, 2)
+        XCTAssertEqual(model.evaluation, .centipawns(15))
+        model.cleanup()
+        harness.stockfish.emitBestMove("a2a3", request: old)
+        XCTAssertEqual(model.liveMoveCount, 2)
+    }
+
+    func testMoveProducingPolicyDoesNotFlashSuggestionText() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        model.startIfNeeded(); model.setSelectedEngineKind(.maia)
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        let request = harness.maia.requireLastRequest()
+        let line = UCIParser().parse("info string Maia policy e7e5 probability 0.4")
+        harness.maia.eventHandler?(.output(line, request: request))
+        XCTAssertTrue(model.maiaLikelihoods.isEmpty)
+        XCTAssertTrue(model.displaysEvaluationBar)
+        model.cleanup()
+    }
+
+    func testPauseAndHiddenBarReleaseEvaluationWithoutAdvancingPlayback() {
+        let harness = EngineAnalysisHarness()
+        let model = mixedGame(harness)
+        model.startIfNeeded(); model.playEngineDemo()
+        harness.maia.emitBestMove("e2e4")
+        let pending = harness.stockfish.requireLastRequest()
+        model.pauseEngineDemo()
+        XCTAssertEqual(model.engineDemoRunState, .pausingAfterCurrentMove)
+        model.setEvaluationBarVisible(false)
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+        XCTAssertTrue(model.canStepEngineDemo)
+        XCTAssertFalse(model.displaysEvaluationBar)
+        harness.stockfish.emitBestMove("a2a3", request: pending)
+        XCTAssertEqual(model.liveMoveCount, 1)
+        XCTAssertTrue(harness.arasan.requests.isEmpty)
+        model.setEvaluationBarVisible(true)
+        XCTAssertTrue(model.displaysEvaluationBar)
+        harness.stockfish.emitFailure("Unavailable")
+        XCTAssertTrue(model.canStepEngineDemo)
+        XCTAssertEqual(model.engineDemoRunState, .paused)
+        model.cleanup()
+    }
+
+    func testEvaluationFailureDoesNotStallContinuousPlayback() {
+        let harness = EngineAnalysisHarness()
+        let model = mixedGame(harness)
+        model.startIfNeeded(); model.playEngineDemo()
+        harness.maia.emitBestMove("e2e4")
+        harness.stockfish.emitFailure("Unavailable")
+        XCTAssertEqual(model.liveMoveCount, 1)
+        XCTAssertEqual(harness.arasan.requireLastRequest().purpose, .opponentMove)
+        XCTAssertEqual(model.engineDemoRunState, .playing)
+        XCTAssertTrue(model.displaysEvaluationBar)
+        model.cleanup()
+    }
+
+    func testSwitchingToArasanCancelsMaiaEvaluationAndRejectsItsLateScore() {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        model.startIfNeeded(); model.setSelectedEngineKind(.maia)
+        let pending = harness.stockfish.requireLastRequest()
+        model.setSelectedEngineKind(.arasan)
+        harness.stockfish.emitInfo(score: .centipawns(900), request: pending)
+        XCTAssertNil(model.evaluationEngineKind)
+        XCTAssertEqual(harness.arasan.requireLastRequest().purpose, .evaluation)
+        XCTAssertTrue(model.displaysEvaluationBar)
+        model.cleanup()
+    }
+
+    func testHumanTurnsAndHistoryWithMaiaForBothPlayerColors() throws {
+        for color in [PieceColor.white, .black] {
+            let harness = EngineAnalysisHarness()
+            let model = harness.makeViewModel(playerColor: color)
+            model.startIfNeeded()
+            if color == .black { harness.stockfish.emitBestMove("e2e4") }
+            model.setSelectedEngineKind(.maia)
+            let humanMove = color == .white ? "e2e4" : "e7e5"
+            model.handleUserMove(move: try Move(string: humanMove), isLegal: true)
+            let request = harness.maia.requireLastRequest()
+            XCTAssertEqual(request.purpose, .opponentMove)
+            XCTAssertEqual(request.sideToMove, color.opposite)
+            XCTAssertEqual(request.moves, color == .white ? ["e2e4"] : ["e2e4", "e7e5"])
+            harness.maia.emitBestMove(color == .white ? "e7e5" : "g1f3")
+            XCTAssertEqual(model.sideToMove, color)
+            model.cleanup()
+        }
+    }
+
+    func testMaiaLikelihoodsRejectStaleEventsAfterHumanMove() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        model.startIfNeeded(); model.setSelectedEngineKind(.maia); model.setSuggestionArrowCount(3)
+        harness.completeMaiaEvaluation()
+        let request = harness.maia.requireLastRequest()
+        let line = UCIParser().parse("info string Maia policy e2e4 probability 0.4")
+        harness.maia.eventHandler?(.output(line, request: request))
+        XCTAssertEqual(model.maiaLikelihoods["e2e4"], 0.4)
+        model.handleUserMove(move: try Move(string: "e2e4"), isLegal: true)
+        XCTAssertTrue(model.maiaLikelihoods.isEmpty)
+        harness.maia.eventHandler?(.output(line, request: request))
+        XCTAssertTrue(model.maiaLikelihoods.isEmpty)
+        model.cleanup()
+    }
+
+    func testMaiaUsesRatingsAndHistoryForSuggestionsWithoutRecordingScores() throws {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        model.startIfNeeded()
+        model.setSelectedEngineKind(.maia)
+        var settings = MaiaSettings()
+        settings.selfRating = 1200; settings.opponentRating = 2000; settings.useHistory = true
+        model.setMaiaSettings(settings)
+        model.setSuggestionArrowCount(3)
+        harness.completeMaiaEvaluation()
+        let request = harness.maia.requireLastRequest()
+        XCTAssertEqual(request.maiaSettings, settings)
+        XCTAssertNotNil(request.initialFEN)
+        XCTAssertEqual(request.moves, [])
+        XCTAssertEqual(request.purpose, .suggestions)
+        harness.maia.emitInfo(score: .centipawns(300), move: "e2e4", multipv: 1)
+        XCTAssertEqual(model.evaluationEngineKind, .stockfish)
+        XCTAssertEqual(model.evaluation, .centipawns(30))
+        XCTAssertNil(model.displayedRecordedEvaluation)
+        model.cleanup()
+    }
+}
+
+@MainActor
 private final class EngineAnalysisHarness {
     let stockfish = RecordingEngineProvider(engineKind: .stockfish)
     let arasan = RecordingEngineProvider(engineKind: .arasan)
+    let maia = RecordingEngineProvider(engineKind: .maia)
 
     func makeViewModel(
         playerColor: PieceColor = .white,
@@ -2486,8 +2759,17 @@ private final class EngineAnalysisHarness {
                 arasan.eventHandler = eventHandler
                 return arasan
             },
+            maiaProviderFactory: { [maia] handler in maia.eventHandler = handler; return maia },
             initialTimeline: initialTimeline
         )
+    }
+
+    /// Finish only the display-only Stockfish phase used by Maia integration.
+    /// Its bestmove intentionally remains unused by the game loop.
+    func completeMaiaEvaluation(score: Int = 30) {
+        guard stockfish.activePurpose == .evaluation else { return }
+        stockfish.emitInfo(score: .centipawns(score))
+        stockfish.emitBestMove("a2a3")
     }
 
     func provider(for engineKind: DemoEngineKind) -> RecordingEngineProvider {
@@ -2496,6 +2778,8 @@ private final class EngineAnalysisHarness {
             return stockfish
         case .arasan:
             return arasan
+        case .maia:
+            return maia
         }
     }
 }

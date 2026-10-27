@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        AAA100000000000000000006 /* MaiaEmbedded in Frameworks */ = {isa = PBXBuildFile; productRef = AAA100000000000000000007; };
+        AAA100000000000000000001 /* MaiaUCI in Frameworks */ = {isa = PBXBuildFile; productRef = AAA100000000000000000003; };
+        AAA100000000000000000004 /* Maia model in Resources */ = {isa = PBXBuildFile; fileRef = AAA100000000000000000005; };
 		A5A100000000000000000001 /* ArasanEmbedded in Frameworks */ = {isa = PBXBuildFile; productRef = A5A100000000000000000003 /* ArasanEmbedded */; };
 		BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000004 /* ChessCore */; };
 		BBD7F42030051B6E0044C1DF /* ChessUI in Frameworks */ = {isa = PBXBuildFile; productRef = D4D200000000000000000005 /* ChessUI */; };
@@ -37,6 +40,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+        AAA100000000000000000005 /* Maia model */ = {isa = PBXFileReference; lastKnownFileType = file; name = "maia3-79m.onnx"; path = "../MaiaEmbedded/Resources/Models/maia3-79m.onnx"; sourceTree = SOURCE_ROOT; };
 		BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftChessDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0D100000000000000000001 /* SwiftChessDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4F100000000000000000001 /* SwiftChessDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftChessDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -86,6 +90,8 @@
 				BBD7F41F30051B6E0044C1DF /* ChessCore in Frameworks */,
 				F1E000000000000000000001 /* SFEngine in Frameworks */,
 				A5A100000000000000000001 /* ArasanEmbedded in Frameworks */,
+                AAA100000000000000000001 /* MaiaUCI in Frameworks */,
+                AAA100000000000000000006 /* MaiaEmbedded in Frameworks */,
 				D4D200000000000000000001 /* (null) in Frameworks */,
 				D4D200000000000000000002 /* (null) in Frameworks */,
 				D4D200000000000000000007 /* (null) in Frameworks */,
@@ -114,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				F1E000000000000000000003 /* nn-c9e480e92425.nnue */,
+                AAA100000000000000000005 /* Maia model */,
 			);
 			name = Dependencies;
 			sourceTree = "<group>";
@@ -174,6 +181,8 @@
 				D4D200000000000000000006 /* ChessUCI */,
 				F1E000000000000000000004 /* SFEngine */,
 				A5A100000000000000000003 /* ArasanEmbedded */,
+                AAA100000000000000000003 /* MaiaUCI */,
+                AAA100000000000000000007 /* MaiaEmbedded */,
 			);
 			productName = SwiftChessDemo;
 			productReference = BBE95A3D2F09B47C003C9B73 /* SwiftChessDemo.app */;
@@ -262,6 +271,7 @@
 				D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */,
 				F1E000000000000000000005 /* XCLocalSwiftPackageReference "../StockfishEmbedded" */,
 				A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */,
+                AAA100000000000000000002 /* MaiaEmbedded */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BBE95A3E2F09B47C003C9B73 /* Products */;
@@ -281,6 +291,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F1E000000000000000000002 /* nn-c9e480e92425.nnue in Resources */,
+                AAA100000000000000000004 /* Maia model in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -669,6 +680,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+        AAA100000000000000000002 = {isa = XCLocalSwiftPackageReference; relativePath = ../MaiaEmbedded; };
 		D4D200000000000000000003 /* XCLocalSwiftPackageReference "../SwiftChessTools" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../SwiftChessTools;
@@ -691,6 +703,8 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+        AAA100000000000000000007 = {isa = XCSwiftPackageProductDependency; package = AAA100000000000000000002; productName = MaiaEmbedded; };
+        AAA100000000000000000003 = {isa = XCSwiftPackageProductDependency; package = AAA100000000000000000002; productName = MaiaUCI; };
 		A5A100000000000000000003 /* ArasanEmbedded */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A5A100000000000000000002 /* XCRemoteSwiftPackageReference "ArasanEmbedded" */;
