@@ -62,7 +62,7 @@ x86_64 simulator build is not a supported configuration.
 
 ### Release dependency baseline
 
-SwiftChessDemo 1.7.0 uses these coordinated source versions:
+SwiftChessDemo 1.8.0 uses these coordinated source versions:
 
 | Dependency | Version | Resolution |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ to be a Git repo.
 mkdir swift-chess-demo-dev
 cd swift-chess-demo-dev
 
-git clone --branch v1.7.0 https://github.com/Trickfest/SwiftChessDemo.git
+git clone --branch v1.8.0 https://github.com/Trickfest/SwiftChessDemo.git
 git clone --branch v1.4.0 https://github.com/Trickfest/SwiftChessTools.git
 git clone --branch v1.14.0 https://github.com/Trickfest/StockfishEmbedded.git
 ```

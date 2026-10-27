@@ -164,7 +164,7 @@ final class GameViewModel: ObservableObject {
     @Published private(set) var engineMoveTime: EngineMoveTime
     /// Embedded engine used for future live replies and suggestion analysis.
     @Published private(set) var selectedEngineKind: DemoEngineKind
-    /// Settings captured in each Maia request, relative to the side to move.
+    /// Human-game Maia settings; engine-demo settings live in each side's configuration.
     @Published private(set) var maiaSettings = MaiaSettings()
     /// Original human-move probabilities, never searched evaluation scores.
     @Published private(set) var maiaLikelihoods: [String: Double] = [:]
@@ -700,15 +700,40 @@ final class GameViewModel: ObservableObject {
         isEngineDemoMode ? (canStepEngineDemo || canRestartEngineDemo) : canSwitchEngine
     }
 
-    func setMaiaSettings(_ settings: MaiaSettings) {
-        guard canEditMaiaSettings, settings != maiaSettings,
+    func maiaSettings(for side: PieceColor?) -> MaiaSettings {
+        if isEngineDemoMode, let side {
+            return engineDemoConfiguration.sideConfiguration(for: side).maiaSettings
+        }
+        return maiaSettings
+    }
+
+    func canEditMaiaSettings(for side: PieceColor?) -> Bool {
+        guard canEditMaiaSettings else { return false }
+        if isEngineDemoMode {
+            guard let side else { return false }
+            return engineDemoConfiguration.sideConfiguration(for: side).engineKind == .maia
+        }
+        return side == nil && selectedEngineKind == .maia
+    }
+
+    func setMaiaSettings(_ settings: MaiaSettings, for side: PieceColor? = nil) {
+        guard canEditMaiaSettings(for: side), settings != maiaSettings(for: side),
               (600...2600).contains(settings.selfRating), (600...2600).contains(settings.opponentRating),
               settings.temperature.isFinite, (0...5).contains(settings.temperature),
               settings.topP.isFinite, settings.topP > 0, settings.topP <= 1 else { return }
+        if isEngineDemoMode, let side {
+            updateEngineDemoConfiguration { configuration in
+                switch side {
+                case .white: configuration.white.maiaSettings = settings
+                case .black: configuration.black.maiaSettings = settings
+                }
+            }
+            return
+        }
         if selectedEngineKind == .maia {
-            finishMaiaEvaluation(resumeWork: false)
-            maiaProvider.stop()
-            activeAnalysisSearchRequest = nil
+            // Drain stale analysis through UCI stop, retaining the loaded model.
+            // Independent Stockfish evaluation can finish with its existing request.
+            cancelAnalysisSearch(clearSuggestions: true, queueReplacement: nil)
         }
         maiaSettings = settings
         maiaLikelihoods.removeAll()
@@ -1957,7 +1982,9 @@ final class GameViewModel: ObservableObject {
             multiPVCount: purpose == .suggestions ? Self.maximumSuggestionArrowCount : 1,
             safetyTimeoutSeconds: nil,
             positionPly: liveMoveCount,
-            maiaSettings: maiaSettings,
+            maiaSettings: isEngineDemoMode
+                ? engineDemoConfiguration.sideConfiguration(for: liveGame.position.state.turn).maiaSettings
+                : maiaSettings,
             initialFEN: resolvedEngineKind == .maia ? fenSerializer.fen(from: initialPosition) : nil,
             moves: resolvedEngineKind == .maia ? timeline.moves.map { $0.description } : []
         )

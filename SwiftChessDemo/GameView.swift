@@ -421,15 +421,6 @@ struct GameView: View {
 
     private var displayOptionsSection: some View {
         panelSection("Preferences") {
-            if viewModel.selectedEngineKind == .maia || viewModel.isEngineDemoMode {
-                MaiaSettingsView(viewModel: viewModel)
-                if !viewModel.maiaLikelihoods.isEmpty {
-                    Text(viewModel.maiaLikelihoods.sorted { $0.value > $1.value }.map {
-                        "\($0.key): \(Int(($0.value * 100).rounded()))%"
-                    }.joined(separator: " · "))
-                    .font(.caption).accessibilityIdentifier("Game.maiaLikelihoods")
-                }
-            }
             if horizontalSizeClass == .regular {
                 VStack(spacing: 10) {
                     pieceSetControl
@@ -598,6 +589,8 @@ struct GameView: View {
             .accessibilityIdentifier("Game.engineDemo\(title)EnginePicker")
             .accessibilityValue(engineDemoSideConfiguration(for: color).engineKind.displayName)
 
+            MaiaSettingsView(viewModel: viewModel, side: color)
+
             Menu {
                 ForEach(EngineMoveTime.allCases) { moveTime in
                     Button(moveTime.displayName) {
@@ -616,6 +609,7 @@ struct GameView: View {
             .buttonStyle(.bordered)
             .accessibilityIdentifier("Game.engineDemo\(title)MoveTimePicker")
             .accessibilityValue(engineDemoSideConfiguration(for: color).moveTime.displayName)
+            .disabled(engineDemoSideConfiguration(for: color).engineKind == .maia)
         }
     }
 
@@ -925,6 +919,14 @@ struct GameView: View {
             .disabled(!viewModel.canSwitchEngine)
             .accessibilityIdentifier("Game.enginePicker")
             .accessibilityValue(viewModel.selectedEngineKind.displayName)
+
+            MaiaSettingsView(viewModel: viewModel)
+            if viewModel.selectedEngineKind == .maia, !viewModel.maiaLikelihoods.isEmpty {
+                Text(viewModel.maiaLikelihoods.sorted { $0.value > $1.value }.map {
+                    "\($0.key): \(Int(($0.value * 100).rounded()))%"
+                }.joined(separator: " · "))
+                .font(.caption).accessibilityIdentifier("Game.maiaLikelihoods")
+            }
         }
     }
 
@@ -947,6 +949,7 @@ struct GameView: View {
         .buttonStyle(.bordered)
         .accessibilityIdentifier("Game.engineMoveTimePicker")
         .accessibilityValue(viewModel.engineMoveTime.displayName)
+        .disabled(viewModel.selectedEngineKind == .maia)
     }
 
     private var coordinateLabelsControl: some View {

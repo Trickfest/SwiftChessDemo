@@ -2088,6 +2088,68 @@ final class EngineProviderTimeoutTests: XCTestCase {
 
 @MainActor
 final class EmbeddedEngineProviderSessionTests: XCTestCase {
+    func testMaiaSettingsReplacementDrainsOldAnalysisAndReusesTransport() async {
+        let transport = RecordingEmbeddedEngineTransport()
+        var starts = 0
+        var events: [EngineProviderEvent] = []
+        let session = EmbeddedEngineProviderSession(
+            engineKind: .maia,
+            startupSequence: .providerSendsUCI,
+            lifecycleCoordinator: EmbeddedEngineLifecycleCoordinator(),
+            transportFactory: { handler in
+                starts += 1
+                transport.install(lineHandler: handler)
+                return transport
+            },
+            eventHandler: { events.append($0) }
+        )
+        defer { session.stop() }
+        let first = makeRequest(engineKind: .maia)
+        var settings = MaiaSettings()
+        settings.selfRating = 1200
+        settings.opponentRating = 1800
+        settings.temperature = 0.7
+        settings.topP = 0.8
+        settings.useHistory = false
+        let replacement = EngineSearchRequest(
+            engineKind: .maia, purpose: .suggestions, fen: first.fen,
+            sideToMove: .white, moveTimeMilliseconds: 250, multiPVCount: 1,
+            maiaSettings: settings)
+
+        session.startOrQueueSearch(first)
+        guard await waitUntil({ transport.commands == ["uci"] }) else { return }
+        transport.emit("uciok")
+        guard await waitUntil({ transport.commands.last == "isready" }) else { return }
+        XCTAssertTrue(transport.commands.contains("setoption name UseHistory value true"))
+        transport.emit("readyok")
+        guard await waitUntil({ transport.commands.last == "go movetime 250" }) else { return }
+
+        session.cancelAnalysisSearch(queueReplacement: nil)
+        session.startOrQueueSearch(replacement)
+        XCTAssertEqual(transport.commands.last, "stop")
+        let beforeOldOutput = events.count
+        transport.emit("info string Maia policy e2e4 probability 0.9")
+        transport.emit("bestmove e2e4")
+        guard await waitUntil({ transport.commands.last == "isready" }) else { return }
+        XCTAssertEqual(events.count, beforeOldOutput, "Discard canceled policy and bestmove")
+        XCTAssertEqual(Array(transport.commands.suffix(8)), [
+            "setoption name MultiPV value 1",
+            "setoption name SelfElo value 1200",
+            "setoption name OppoElo value 1800",
+            "setoption name Temperature value 0.7",
+            "setoption name TopP value 0.8",
+            "setoption name UseHistory value false",
+            "ucinewgame", "isready",
+        ])
+        transport.emit("readyok")
+        guard await waitUntil({ transport.commands.last == "go movetime 250" }) else { return }
+        transport.emit("bestmove d2d4")
+        guard await waitUntil({ !session.isBusy }) else { return }
+        XCTAssertTrue(events.contains(.output(UCIParser().parse("bestmove d2d4"), request: replacement)))
+        XCTAssertEqual(starts, 1, "Options must reuse the prepared engine")
+        XCTAssertEqual(transport.commands.filter { $0 == "uci" }.count, 1)
+    }
+
     func testStockfishWaitsForUCIAndReadyBeforeSearching() async {
         let transport = RecordingEmbeddedEngineTransport()
         let session = makeSession(
@@ -2495,6 +2557,70 @@ final class EmbeddedEngineProviderSessionTests: XCTestCase {
 
 @MainActor
 final class MaiaViewModelTests: XCTestCase {
+    func testMaiaSettingsRefreshSuggestionsWithoutStoppingProviderAndRejectOldPolicy() {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.setSelectedEngineKind(.maia)
+        model.setSuggestionArrowCount(3)
+        harness.completeMaiaEvaluation()
+        let original = harness.maia.requireLastRequest()
+        XCTAssertTrue(original.maiaSettings.useHistory, "Normal games use recorded history by default")
+        let stops = harness.maia.stopCount
+        let evaluations = harness.stockfish.requests.count
+        let policy = UCIParser().parse("info string Maia policy e2e4 probability 0.4")
+        harness.maia.eventHandler?(.output(policy, request: original))
+        XCTAssertFalse(model.maiaLikelihoods.isEmpty)
+
+        var previous = original
+        for change in 0..<3 {
+            var settings = model.maiaSettings
+            switch change {
+            case 0: settings.selfRating = 1200
+            case 1: settings.temperature = 0.7
+            default: settings.useHistory = false
+            }
+            model.setMaiaSettings(settings)
+            let current = harness.maia.requireLastRequest()
+            XCTAssertEqual(current.maiaSettings, settings)
+            XCTAssertNotEqual(current.id, previous.id)
+            XCTAssertTrue(model.maiaLikelihoods.isEmpty)
+            harness.maia.eventHandler?(.output(policy, request: previous))
+            harness.maia.emitBestMove("e2e4", request: previous)
+            XCTAssertTrue(model.maiaLikelihoods.isEmpty)
+            XCTAssertEqual(model.liveMoveCount, 0)
+            previous = current
+        }
+        harness.maia.eventHandler?(.output(policy, request: previous))
+        XCTAssertEqual(model.maiaLikelihoods["e2e4"], 0.4)
+        XCTAssertEqual(harness.maia.stopCount, stops)
+        XCTAssertEqual(harness.stockfish.requests.count, evaluations)
+    }
+
+    func testMaiaSettingsKeepPendingStockfishEvaluationAndUseLatestSettingsAfterItFinishes() {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.startIfNeeded()
+        model.setSelectedEngineKind(.maia)
+        model.setSuggestionArrowCount(3)
+        let pending = harness.stockfish.requireLastRequest()
+        let evaluations = harness.stockfish.requests.count
+        let suspensions = harness.stockfish.suspendCount
+        let stops = harness.maia.stopCount
+        var settings = model.maiaSettings
+        settings.opponentRating = 1900
+        settings.topP = 0.8
+        model.setMaiaSettings(settings)
+        XCTAssertEqual(harness.stockfish.requests.count, evaluations)
+        XCTAssertEqual(harness.stockfish.suspendCount, suspensions)
+        XCTAssertEqual(harness.stockfish.requireLastRequest(), pending)
+        XCTAssertEqual(harness.maia.stopCount, stops)
+        harness.completeMaiaEvaluation()
+        XCTAssertEqual(harness.maia.requireLastRequest().maiaSettings, settings)
+    }
+
     func testMaiaSettingsCanChangeBetweenCompletedEngineDemoGames() throws {
         let harness = EngineAnalysisHarness()
         let completedTimeline = try GameTimeline(
@@ -2522,9 +2648,9 @@ final class MaiaViewModelTests: XCTestCase {
         settings.temperature = 0
         settings.topP = 0.8
         settings.useHistory = true
-        model.setMaiaSettings(settings)
+        model.setMaiaSettings(settings, for: .white)
 
-        XCTAssertEqual(model.maiaSettings, settings)
+        XCTAssertEqual(model.maiaSettings(for: .white), settings)
         XCTAssertEqual(model.livePositionFEN, completedFEN)
         XCTAssertTrue(model.canRestartEngineDemo)
         XCTAssertTrue(harness.maia.requests.isEmpty)
@@ -2541,7 +2667,87 @@ final class MaiaViewModelTests: XCTestCase {
         XCTAssertFalse(model.canEditMaiaSettings)
         var changedDuringPlay = settings
         changedDuringPlay.selfRating = 1500
-        model.setMaiaSettings(changedDuringPlay)
+        model.setMaiaSettings(changedDuringPlay, for: .white)
+        XCTAssertEqual(model.maiaSettings(for: .white), settings)
+    }
+
+    func testEngineDemoUsesIndependentMaiaSettingsForEachSideAndKeepsThemAcrossEngineSwitches() {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel(gameMode: .engineVsEngine,
+            engineDemoConfiguration: EngineDemoConfiguration(
+                white: .init(engineKind: .maia, moveTime: .quarterSecond),
+                black: .init(engineKind: .maia, moveTime: .quarterSecond), pacing: .fast))
+        defer { model.cleanup() }
+        model.setEvaluationBarVisible(false)
+        model.startIfNeeded()
+
+        var white = MaiaSettings()
+        white.selfRating = 1200
+        white.opponentRating = 2000
+        white.temperature = 0.5
+        white.topP = 0.8
+        var black = MaiaSettings()
+        black.selfRating = 2000
+        black.opponentRating = 1200
+        black.temperature = 1.5
+        black.topP = 0.95
+        black.useHistory = false
+        model.setMaiaSettings(white, for: .white)
+        model.setMaiaSettings(black, for: .black)
+        XCTAssertEqual(model.maiaSettings(for: .white), white)
+        XCTAssertEqual(model.maiaSettings(for: .black), black)
+        XCTAssertEqual(model.maiaSettings, MaiaSettings(), "Human-game settings stay separate")
+        XCTAssertTrue(harness.maia.requests.isEmpty, "Editing paused settings must not start the engine")
+        XCTAssertEqual(harness.maia.stopCount, 0)
+        XCTAssertFalse(model.canEditMaiaSettings(for: nil))
+
+        model.stepEngineDemo()
+        let whiteRequest = harness.maia.requireLastRequest()
+        XCTAssertEqual(whiteRequest.sideToMove, .white)
+        XCTAssertEqual(whiteRequest.maiaSettings, white)
+        XCTAssertFalse(model.canEditMaiaSettings(for: .black))
+        model.setMaiaSettings(white, for: .black)
+        XCTAssertEqual(model.maiaSettings(for: .black), black, "Cannot alter settings during a move")
+        harness.maia.emitBestMove("e2e4")
+
+        // The off-turn settings remain independent, and paused edits reach the next request.
+        black.topP = 0.7
+        model.setMaiaSettings(black, for: .black)
+        model.stepEngineDemo()
+        let blackRequest = harness.maia.requireLastRequest()
+        XCTAssertEqual(blackRequest.sideToMove, .black)
+        XCTAssertEqual(blackRequest.maiaSettings, black)
+        XCTAssertEqual(blackRequest.moves, ["e2e4"])
+        harness.maia.emitBestMove("e7e5")
+
+        model.setEngineDemoEngineKind(.arasan, for: .black)
+        XCTAssertFalse(model.canEditMaiaSettings(for: .black))
+        XCTAssertTrue(model.canEditMaiaSettings(for: .white))
+        model.setMaiaSettings(white, for: .black)
+        XCTAssertEqual(model.maiaSettings(for: .black), black, "Disabled controls retain their values")
+        model.setEngineDemoEngineKind(.maia, for: .black)
+        XCTAssertTrue(model.canEditMaiaSettings(for: .black))
+        XCTAssertEqual(model.maiaSettings(for: .black), black)
+        XCTAssertEqual(model.maiaSettings(for: .white), white)
+    }
+
+    func testHumanMaiaSettingsAreDisabledForOtherEnginesAndRetainedAcrossSwitches() {
+        let harness = EngineAnalysisHarness()
+        let model = harness.makeViewModel()
+        defer { model.cleanup() }
+        model.setEvaluationBarVisible(false)
+        model.startIfNeeded()
+        var settings = MaiaSettings()
+        settings.selfRating = 1300
+        XCTAssertFalse(model.canEditMaiaSettings(for: nil))
+        model.setMaiaSettings(settings)
+        XCTAssertEqual(model.maiaSettings, MaiaSettings())
+        model.setSelectedEngineKind(.maia)
+        XCTAssertTrue(model.canEditMaiaSettings(for: nil))
+        model.setMaiaSettings(settings)
+        model.setSelectedEngineKind(.arasan)
+        XCTAssertFalse(model.canEditMaiaSettings(for: nil))
+        model.setSelectedEngineKind(.maia)
         XCTAssertEqual(model.maiaSettings, settings)
     }
 

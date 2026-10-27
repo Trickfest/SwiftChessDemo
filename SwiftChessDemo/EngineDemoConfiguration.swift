@@ -64,10 +64,11 @@ enum EngineDemoPacing: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// Engine and move time for one side in engine-vs-engine mode.
+/// Engine, move time and independent Maia options for one demo side.
 struct EngineDemoSideConfiguration: Equatable, Sendable {
     var engineKind: DemoEngineKind
     var moveTime: EngineMoveTime
+    var maiaSettings = MaiaSettings()
 }
 
 /// Optional stress settings that randomize the engine and/or move time per move.

@@ -7,6 +7,15 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.8.0 - 2026-10-27
+
+- Enable Maia recorded history by default. Apply rating/history changes immediately
+  and slider changes on release, removing the Apply button. Refresh Maia analysis
+  without tearing down its loaded model or restarting independent Stockfish evaluation.
+- Place Maia settings below each engine selector, disabled when another engine
+  is selected. Keep Move Time visible but disabled for Maia. Give White and Black
+  independent Maia ratings, sampling and history settings in engine demos.
+
 ## 1.7.0 - 2026-10-27
 
 - Consume public MaiaEmbedded 1.0.0 through SwiftPM and provision its verified
