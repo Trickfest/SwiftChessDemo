@@ -101,8 +101,15 @@ Stockfish dependencies remain. The full 106-test non-UI gate and unsigned iOS
 Release/asset checks passed with that final dependency graph. A separate public
 checkout layout, without a Maia sibling or personal signing, also built Release.
 The signed device Release build is ready. All three app bundles report 1.7.0 and
-contain the pinned model size/SHA-256. Final release-configuration device checks
-are pending; the earlier physical feedback above is historical integration evidence.
+contain the pinned model size/SHA-256. The signed 1.7.0 build installed and
+launched on the physical iPhone 16 Pro Max; the user confirmed all final iPhone
+checks passed, including Maia gameplay/settings/suggestions, mixed-engine layout,
+reset and background/return. The same signed build installed and launched on
+the physical iPad Pro 13-inch (M4); the user confirmed all final iPad checks
+passed, including Maia play/settings/suggestions, engine switching, mixed-engine
+layout, rotation, reset and background/return. These are direct user checks; no
+UI-automation result is claimed. The earlier feedback above remains historical
+integration evidence.
 
 ## Notices
 

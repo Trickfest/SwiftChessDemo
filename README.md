@@ -91,9 +91,9 @@ to be a Git repo.
 mkdir swift-chess-demo-dev
 cd swift-chess-demo-dev
 
-git clone https://github.com/Trickfest/SwiftChessDemo.git
-git clone https://github.com/Trickfest/SwiftChessTools.git
-git clone https://github.com/Trickfest/StockfishEmbedded.git
+git clone --branch v1.7.0 https://github.com/Trickfest/SwiftChessDemo.git
+git clone --branch v1.4.0 https://github.com/Trickfest/SwiftChessTools.git
+git clone --branch v1.14.0 https://github.com/Trickfest/StockfishEmbedded.git
 ```
 
 The resulting layout should be:
