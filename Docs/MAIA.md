@@ -81,18 +81,20 @@ Exact engine moves or strength are not asserted.
 
 The package's native inference and hardware validation are maintained in
 [MaiaEmbedded Testing](https://github.com/Trickfest/MaiaEmbedded/blob/main/Docs/Testing.md).
-For SwiftChessDemo 1.8.0, the 111-test non-UI gate and unsigned iOS Release/asset
-checks passed. The signed feature build was installed and launched on the
-physical iPhone 16 Pro Max and iPad Pro 13-inch (M4), and the user accepted the
-revised UI before the release-version bump. No new automated UI or full physical
-lifecycle test pass is claimed for this settings revision.
+The engine-refresh candidate passed the 111-test non-UI gate and all 36
+simulator GUI tests with the same Stockfish/Arasan source and model bytes now
+published as StockfishEmbedded 1.15.0 and ArasanEmbedded 1.6.0. After restoring
+the public Arasan dependency, the final 1.9.0 graph passed all 111 non-UI tests,
+the unsigned iOS Release/asset gate and five focused live-game GUI tests covering
+both engines, both mixed-engine color assignments and Arasan against itself.
+Physical-device lifecycle checks were not repeated for this engine refresh.
 
 ## Source-release packaging
 
-SwiftChessDemo 1.8.0 resolves public MaiaEmbedded 1.0.0 at
-`b5a84186513a962312f2f6bf0a03ab7d3c5c22ea`, ArasanEmbedded 1.5.0 and ONNX Runtime
+SwiftChessDemo 1.9.0 resolves public MaiaEmbedded 1.0.0 at
+`b5a84186513a962312f2f6bf0a03ab7d3c5c22ea`, ArasanEmbedded 1.6.0 and ONNX Runtime
 1.24.2 through the committed lockfile. Use the matching SwiftChessTools 1.4.0 and
-StockfishEmbedded 1.14.0 sibling source tags. Model provisioning remains explicit
+StockfishEmbedded 1.15.0 sibling source tags. Model provisioning remains explicit
 and checksum-verified; no Maia sibling checkout is required.
 
 Releases contain source only. Do not attach prebuilt apps, frameworks, engines,

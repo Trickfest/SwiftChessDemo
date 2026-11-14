@@ -62,19 +62,19 @@ x86_64 simulator build is not a supported configuration.
 
 ### Release dependency baseline
 
-SwiftChessDemo 1.8.0 uses these coordinated source versions:
+SwiftChessDemo 1.9.0 uses these coordinated source versions:
 
 | Dependency | Version | Resolution |
 | --- | --- | --- |
 | SwiftChessTools | 1.4.0 | Local sibling checkout; required for timeline/navigation APIs |
-| StockfishEmbedded | 1.14.0 | Local sibling checkout and its verified NNUE asset |
-| ArasanEmbedded | 1.5.0 | Published remote revision recorded in Package.resolved |
+| StockfishEmbedded | 1.15.0 | Local sibling checkout and its verified NNUE asset |
+| ArasanEmbedded | 1.6.0 | Published remote revision recorded in Package.resolved |
 | MaiaEmbedded | 1.0.0 | Published remote revision recorded in Package.resolved; app-owned model |
 
-These engines embed Stockfish upstream `effdc3fd` with
-`nn-c9e480e92425.nnue` and Arasan upstream `5d6be86c` with
-`arasanv8-20261005.nnue`. The Arasan package requirement is 1.5.0 or later
-within major version 1; the committed lockfile selects published 1.5.0.
+These engines embed Stockfish upstream `1e7e6bde` with
+`nn-68752b755c93.nnue` and Arasan upstream `99adddfb` with
+`arasanv11-20261105.nnue`. The Arasan package requirement is 1.6.0 or later
+within major version 1; the committed lockfile selects published 1.6.0.
 Local path dependencies are not version-pinned by SwiftPM, so use the matching
 sibling source versions.
 
@@ -91,9 +91,9 @@ to be a Git repo.
 mkdir swift-chess-demo-dev
 cd swift-chess-demo-dev
 
-git clone --branch v1.8.0 https://github.com/Trickfest/SwiftChessDemo.git
+git clone --branch v1.9.0 https://github.com/Trickfest/SwiftChessDemo.git
 git clone --branch v1.4.0 https://github.com/Trickfest/SwiftChessTools.git
-git clone --branch v1.14.0 https://github.com/Trickfest/StockfishEmbedded.git
+git clone --branch v1.15.0 https://github.com/Trickfest/StockfishEmbedded.git
 ```
 
 The resulting layout should be:
@@ -106,7 +106,7 @@ swift-chess-demo-dev/
 ```
 
 Required after clone: initialize the sibling `../StockfishEmbedded` checkout.
-NNUE is the roughly 113 MB (108 MiB) neural-network data file Stockfish uses to
+NNUE is the roughly 138 MB (132 MiB) neural-network data file Stockfish uses to
 evaluate chess positions. It is not in Git because it is large. This is a
 one-command developer setup step:
 

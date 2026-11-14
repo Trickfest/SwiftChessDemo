@@ -6,7 +6,7 @@ SIMULATOR_DESTINATION="${SWIFT_CHESS_DEMO_SIMULATOR_DESTINATION:-platform=iOS Si
 TEST_DERIVED_DATA="${SWIFT_CHESS_DEMO_TEST_DERIVED_DATA:-.build/xcode-swiftchessdemo}"
 RELEASE_DERIVED_DATA="${SWIFT_CHESS_DEMO_RELEASE_DERIVED_DATA:-.build/xcode-swiftchessdemo-release}"
 SOURCE_PACKAGES_DIR="${SWIFT_CHESS_DEMO_SOURCE_PACKAGES_DIR:-$TEST_DERIVED_DATA/SourcePackages}"
-EXPECTED_MARKETING_VERSION="1.8.0"
+EXPECTED_MARKETING_VERSION="1.9.0"
 STOCKFISH_EVALUATE_HEADER="../StockfishEmbedded/ThirdParty/Stockfish/src/evaluate.h"
 
 cd "$ROOT_DIR"
@@ -144,5 +144,14 @@ fi
 
 if ! cmp -s "$maia_model_path" "$app_bundle/maia3-79m.onnx"; then
   printf '%s\n' 'Release app is missing the exact provisioned Maia model.' >&2; exit 1
+fi
+
+arasan_nnue="$app_bundle/ArasanEmbedded_ArasanEmbedded.bundle/arasanv11-20261105.nnue"
+if [[ ! -f "$arasan_nnue" ]] ||
+  [[ "$(wc -c < "$arasan_nnue" | tr -d ' ')" != "36367668" ]] ||
+  [[ "$(shasum -a 256 "$arasan_nnue" | awk '{print $1}')" != \
+    "cf48f3ff5dced6166d3bc49b7bb54e4d7bb9b0543b2747baefeda7679bfaee6d" ]]; then
+  printf '%s\n' 'Release app is missing the exact Arasan version-11 network.' >&2
+  exit 1
 fi
 printf 'SwiftChessDemo headless checks succeeded.\n'

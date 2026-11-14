@@ -7,6 +7,17 @@ for a release. Tagged releases use dated version headings.
 
 ## Unreleased
 
+## 1.9.0 - 2026-11-14
+
+- Adopt StockfishEmbedded 1.15.0 at upstream `1e7e6bde`, bundling the matching
+  SFNNv20 `nn-68752b755c93.nnue` network and updating the resource assertion.
+- Adopt published ArasanEmbedded 1.6.0 at upstream `99adddfb` through the public
+  versioned SwiftPM dependency and lockfile, with its version-11 bundled network.
+- Verify Arasan's network filename, size and SHA-256 in the Release app alongside
+  exact Stockfish and Maia asset checks. Preserve the SCT/Stockfish sibling paths
+  and existing Maia source/model pins.
+- Align app/test marketing versions and the local Release assertion at 1.9.0.
+
 ## 1.8.0 - 2026-10-27
 
 - Enable Maia recorded history by default. Apply rating/history changes immediately

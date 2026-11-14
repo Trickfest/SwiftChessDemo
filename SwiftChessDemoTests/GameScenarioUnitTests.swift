@@ -19,7 +19,7 @@ final class StockfishNetworkResourceTests: XCTestCase {
         let networkURL = try XCTUnwrap(StockfishNetworkResource.bundledFileURL())
 
         XCTAssertEqual(networkURL.lastPathComponent, StockfishNetworkResource.fileName)
-        XCTAssertEqual(networkURL.lastPathComponent, "nn-c9e480e92425.nnue")
+        XCTAssertEqual(networkURL.lastPathComponent, "nn-68752b755c93.nnue")
         XCTAssertTrue(FileManager.default.fileExists(atPath: networkURL.path))
     }
 }
